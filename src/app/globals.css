@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0E1117;
+  --foreground: #FAFAFA;
 }
 
 @theme inline {
@@ -12,15 +12,130 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ==== Animations ==== */
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 18px rgba(57, 255, 20, 0.20); }
+  50%      { box-shadow: 0 0 36px rgba(57, 255, 20, 0.55); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes count-pop {
+  0%   { transform: scale(0.85); opacity: 0; }
+  60%  { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+.animate-fade-up    { animation: fade-up 0.5s ease-out both; }
+.animate-count-pop  { animation: count-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Slow infinite gradient slide for headline text */
+.text-shimmer {
+  background: linear-gradient(110deg, #39FF14 0%, #00e5ff 30%, #39FF14 60%, #00e5ff 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+
+/* Custom Neon Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(57, 255, 20, 0.4); }
+
+/* Selection */
+::selection { background: rgba(57, 255, 20, 0.35); color: #ffffff; }
+
+/* Reduced motion respect */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-pulse-glow,
+  .animate-fade-up,
+  .animate-count-pop,
+  .text-shimmer { animation: none !important; }
+}
+
+/* Slightly larger base text for better readability on all screen sizes */
+body {
+  font-size: 16px;
+}
+
+@media (min-width: 1280px) {
+  body {
+    font-size: 17px;
+  }
+}
+
+/* Keyboard focus ring */
+:focus-visible {
+  outline: 2px solid rgba(57, 255, 20, 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(57, 255, 20, 0.7);
+  outline-offset: 2px;
+}
+
+/* Remove default outline only when not keyboard-focused */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Dashboard marquee fade — aligns the disappear point with the static tile edges
+   (24px at default = px-6, 48px at xl = xl:px-12). Container spans full viewport
+   width so cards extend into the gutter but fade out exactly as they cross the tile edge. */
+.dashboard-marquee-mask {
+  --marquee-margin: 24px;
+  --marquee-fade: 80px;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    transparent var(--marquee-margin),
+    black calc(var(--marquee-margin) + var(--marquee-fade)),
+    black calc(100% - var(--marquee-margin) - var(--marquee-fade)),
+    transparent calc(100% - var(--marquee-margin)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    transparent var(--marquee-margin),
+    black calc(var(--marquee-margin) + var(--marquee-fade)),
+    black calc(100% - var(--marquee-margin) - var(--marquee-fade)),
+    transparent calc(100% - var(--marquee-margin)),
+    transparent 100%
+  );
+}
+
+@media (min-width: 1280px) {
+  .dashboard-marquee-mask {
+    --marquee-margin: 48px;
+  }
 }

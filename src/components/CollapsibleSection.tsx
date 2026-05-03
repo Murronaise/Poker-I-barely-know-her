@@ -1,0 +1,85 @@
+"use client";
+
+import { useEffect, useState, useRef, ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+
+type Props = {
+  title: string;
+  icon?: ReactNode;
+  rightSlot?: ReactNode;
+  children: ReactNode;
+  /** If viewport height is below this threshold, auto-collapse. Responds to resize. */
+  collapseUnderHeight?: number;
+  /** Optional initial state override (only applies when collapseUnderHeight=0) */
+  defaultOpen?: boolean;
+  /** Make the body fill remaining space (for the dominant section on a page) */
+  fill?: boolean;
+  className?: string;
+};
+
+export default function CollapsibleSection({
+  title,
+  icon,
+  rightSlot,
+  children,
+  collapseUnderHeight = 0,
+  defaultOpen = true,
+  fill = false,
+  className = "",
+}: Props) {
+  const [open, setOpen] = useState(defaultOpen);
+  const manuallyToggled = useRef(false);
+
+  // Auto-open/close based on viewport height; respects manual user toggle
+  useEffect(() => {
+    if (collapseUnderHeight <= 0) return;
+
+    const check = () => {
+      if (!manuallyToggled.current) {
+        setOpen(window.innerHeight >= collapseUnderHeight);
+      }
+    };
+
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [collapseUnderHeight]);
+
+  const handleToggle = () => {
+    manuallyToggled.current = true;
+    setOpen((o) => !o);
+  };
+
+  return (
+    <div
+      className={`bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl ${
+        open && fill ? "flex-1 min-h-0 flex flex-col" : ""
+      } ${className}`}
+    >
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="w-full flex items-center justify-between gap-3 px-5 py-3 select-none hover:bg-white/[0.05] transition-colors rounded-2xl"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          {icon}
+          <h2 className="text-base md:text-lg font-black tracking-widest uppercase truncate">
+            {title}
+          </h2>
+        </div>
+        <div className="flex items-center gap-3">
+          {rightSlot}
+          <ChevronDown
+            size={18}
+            className={`text-white/40 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </div>
+      </button>
+      {open && (
+        <div className={`px-5 pb-5 pt-1 ${fill ? "flex-1 min-h-0 overflow-auto" : ""}`}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
