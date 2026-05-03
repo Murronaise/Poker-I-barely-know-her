@@ -361,20 +361,20 @@ export default function Dashboard() {
       variants={pageVariants}
       initial="hidden"
       animate="show"
-      className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.08)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA]"
+      className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.08)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA]"
     >
       {/* Hero strip — title + date + live/start CTA */}
       <motion.div
         variants={sectionVariants}
-        className="px-6 xl:px-12 pt-4 pb-3 shrink-0"
+        className="px-4 md:px-6 xl:px-12 pt-4 pb-3 shrink-0"
       >
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2.5 bg-[#39FF14]/10 rounded-xl border border-[#39FF14]/20 shrink-0">
+            <div className="p-2 md:p-2.5 bg-[#39FF14]/10 rounded-xl border border-[#39FF14]/20 shrink-0">
               <Activity className="text-[#39FF14]" size={22} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase leading-none">
+              <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
                 Dashboard
               </h1>
               {currentDate && (
@@ -420,7 +420,7 @@ export default function Dashboard() {
       </motion.div>
 
       {/* Headline stats */}
-      <motion.div variants={sectionVariants} className="px-6 xl:px-12 shrink-0">
+      <motion.div variants={sectionVariants} className="px-4 md:px-6 xl:px-12 shrink-0">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
           {headlineStats.map((s, i) => (
             <motion.div
@@ -474,7 +474,7 @@ export default function Dashboard() {
                   if (dragRef.current && !dragRef.current.active && Math.abs(dragRef.current.startPos - posRef.current) > 5) return;
                   router.push(`/leaderboards?category=${metric.categorySlug}`);
                 }}
-                className="w-[360px] md:w-[400px] shrink-0 cursor-pointer"
+                className="w-[280px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer"
               >
                 <div
                   className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/15 hover:border-white/30 transition-all duration-300 rounded-2xl p-4 flex flex-col h-full group select-none relative overflow-hidden"
@@ -552,11 +552,11 @@ export default function Dashboard() {
       </div>
 
       {/* Bottom: Heatmap + Recent Sessions side panel */}
-      <div className="flex-1 min-h-0 px-6 xl:px-12 pb-4 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
+      <div className="md:flex-1 md:min-h-0 px-4 md:px-6 xl:px-12 pb-4 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
         {/* Heatmap */}
         <motion.div
           variants={sectionVariants}
-          className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-3 md:p-5 flex flex-col min-h-0"
+          className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-3 md:p-5 flex flex-col min-h-[320px] md:min-h-0"
         >
           <div className="flex items-end justify-between mb-3 gap-3 shrink-0">
             <div>

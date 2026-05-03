@@ -51,7 +51,7 @@ export default function GamesIndexPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5"
+      className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5"
     >
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-5 gap-4 shrink-0">
         <div className="flex items-center gap-3">
@@ -59,7 +59,7 @@ export default function GamesIndexPage() {
             <History className="text-[#39FF14]" size={22} />
           </div>
           <div>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase leading-none">
+            <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
               Game Sessions
             </h1>
             <p className="text-white/50 text-base mt-2">Manage active games or view past session histories.</p>
@@ -99,7 +99,7 @@ export default function GamesIndexPage() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col overflow-hidden">
+      <div className="md:flex-1 md:min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col md:overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-5 py-3 border-b border-white/10 shrink-0 gap-3">
           <div className="flex items-center gap-3">
             <History className="text-[#39FF14]" size={18} />
@@ -122,7 +122,7 @@ export default function GamesIndexPage() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto p-3 md:p-4 grid gap-3">
+        <div className="md:flex-1 md:min-h-0 md:overflow-auto p-3 md:p-4 grid gap-3">
           {filteredGames.length > 0 ? (
             filteredGames.map((game) => {
             const winner = [...game.players]

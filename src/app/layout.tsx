@@ -49,9 +49,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="h-dvh overflow-hidden flex flex-col bg-[#0E1117] text-[#FAFAFA]">
+      <body className="min-h-dvh md:h-dvh md:overflow-hidden flex flex-col bg-[#0E1117] text-[#FAFAFA]">
         <NavBar />
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">{children}</div>
+        <div className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden">{children}</div>
         <Footer />
         <Toaster theme="dark" position="top-center" richColors />
       </body>

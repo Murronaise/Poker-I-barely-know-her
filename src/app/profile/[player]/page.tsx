@@ -217,7 +217,7 @@ export default function ProfilePage({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5"
+      className="flex-1 md:min-h-0 md:overflow-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5"
     >
       <div className="max-w-7xl mx-auto flex flex-col gap-4">
         <Link
@@ -295,7 +295,7 @@ export default function ProfilePage({
           </div>
 
           <div className="flex-1">
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight leading-none">
+            <h1 className="text-2xl md:text-4xl font-black tracking-tight leading-none">
               {playerName}
             </h1>
             <div className="flex items-center gap-2 text-white/50 text-base mt-2 font-semibold">

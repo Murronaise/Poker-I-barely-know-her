@@ -119,7 +119,7 @@ export default function CreateGamePage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="flex-1 min-h-0 flex flex-col overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5"
+      className="flex-1 flex flex-col md:min-h-0 md:overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5"
     >
       <Link
         href="/games"
@@ -134,7 +134,7 @@ export default function CreateGamePage() {
           <Settings className="text-[#39FF14]" size={22} />
         </div>
         <div>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase leading-none">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
             Configure Game
           </h1>
           <p className="text-white/50 text-base mt-2">

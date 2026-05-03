@@ -647,7 +647,7 @@ function ActiveGameContent() {
   }
 
   return (
-    <main className="flex-1 min-h-0 overflow-hidden text-[#FAFAFA] flex flex-col xl:flex-row gap-3 px-3 md:px-6 xl:px-8 py-3">
+    <main className="flex-1 md:min-h-0 md:overflow-hidden text-[#FAFAFA] flex flex-col xl:flex-row gap-3 px-3 md:px-6 xl:px-8 py-3">
       {/* LEFT COLUMN — Timer + Audit + End */}
       <aside className="xl:w-[340px] shrink-0 flex flex-col gap-3 min-h-0">
         {/* Timer Card with gradient drain */}
@@ -814,12 +814,12 @@ function ActiveGameContent() {
         </div>
 
         {/* Event Log */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden md:flex-1 md:min-h-0 flex flex-col max-h-[280px] md:max-h-none">
           <div className="px-4 py-2.5 border-b border-white/10 flex items-center justify-between shrink-0">
             <h3 className="text-base md:text-lg font-black tracking-widest uppercase text-white/70">Events</h3>
             <span className="text-xs font-mono text-white/30">{events.length}</span>
           </div>
-          <div role="log" aria-live="polite" aria-label="Game events" className="flex-1 min-h-0 overflow-auto p-2 flex flex-col gap-1">
+          <div role="log" aria-live="polite" aria-label="Game events" className="md:flex-1 md:min-h-0 overflow-auto p-2 flex flex-col gap-1">
             {events.map((ev) => {
               const color =
                 ev.type === "rebuy" ? "text-[#39FF14]" :
@@ -856,7 +856,7 @@ function ActiveGameContent() {
       </aside>
 
       {/* RIGHT — Spreadsheet */}
-      <section className="flex-1 min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+      <section className="md:flex-1 md:min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 border-b border-white/10 flex items-center justify-between shrink-0 bg-black/30">
           <h2 className="text-base md:text-lg font-black tracking-widest uppercase text-white/70">Live Table</h2>
           <span className="text-xs font-mono tracking-widest uppercase text-white/30">
@@ -864,8 +864,8 @@ function ActiveGameContent() {
           </span>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto">
-          <table className="w-full border-collapse">
+        <div className="md:flex-1 md:min-h-0 overflow-x-auto md:overflow-auto">
+          <table className="w-full min-w-[640px] border-collapse">
             <thead className="sticky top-0 z-20 bg-black/60 backdrop-blur-md">
               <tr className="border-b border-white/10 text-sm font-bold uppercase tracking-widest text-white/40">
                 <th className="text-left px-3 md:px-4 py-2.5 sticky left-0 bg-black/60 z-30">

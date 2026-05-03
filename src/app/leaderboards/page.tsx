@@ -33,7 +33,7 @@ export default async function LeaderboardsPage({
   const rest = category.rows.slice(3);
 
   return (
-    <main className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5">
+    <main className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5">
       <Link
         href="/"
         className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-4 shrink-0"
@@ -47,7 +47,7 @@ export default async function LeaderboardsPage({
           <Trophy className="text-[#39FF14]" size={22} />
         </div>
         <div>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase leading-none">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
             {category.title}
           </h1>
           <p className="text-white/50 text-base mt-2">{category.subtitle}</p>
@@ -93,10 +93,10 @@ export default async function LeaderboardsPage({
                 : realRank;
             const heightClass =
               realRank === 1
-                ? "h-[240px] md:h-[270px]"
+                ? "h-[210px] sm:h-[240px] md:h-[270px]"
                 : realRank === 2
-                  ? "h-[215px] md:h-[240px]"
-                  : "h-[190px] md:h-[215px]";
+                  ? "h-[190px] sm:h-[215px] md:h-[240px]"
+                  : "h-[170px] sm:h-[190px] md:h-[215px]";
             const accent =
               realRank === 1
                 ? "border-yellow-400/60 shadow-[0_0_40px_rgba(250,204,21,0.3)] bg-gradient-to-b from-yellow-400/15 to-transparent"
@@ -136,37 +136,45 @@ export default async function LeaderboardsPage({
                     )}
                   </div>
 
-                  {/* 3-column horizontal layout: stats | avatar | stats */}
-                  <div className="flex items-center justify-between w-full gap-2 flex-1 min-h-0">
-                    {/* Left: rank + sessions */}
-                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                      <span className={`text-xl md:text-2xl font-black leading-none ${rankColor}`}>#{realRank}</span>
-                      <span className="text-[11px] md:text-[11px] text-white/40 font-bold uppercase tracking-widest leading-tight whitespace-nowrap">{row.sessions}<br/>sessions</span>
-                    </div>
-
-                    {/* Center: avatar — main focal point */}
-                    <div className="flex flex-col items-center gap-1 shrink-0">
-                      <PlayerAvatar
-                        name={row.player}
-                        avatarUrl={avatarMap[row.player]}
-                        size={realRank === 1 ? 112 : 92}
-                        className={`rounded-full border-[3px] shadow-lg ${borderColor} ${
-                          realRank === 1
-                            ? "shadow-yellow-400/30"
-                            : realRank === 2
-                              ? "shadow-gray-300/20"
-                              : "shadow-orange-400/20"
-                        }`}
-                      />
-                      <p className="font-black text-white text-xs md:text-sm text-center w-20 truncate leading-tight">
-                        {row.player}
-                      </p>
-                    </div>
-
-                    {/* Right: win rate */}
-                    <div className="flex flex-col gap-0.5 items-end min-w-0 flex-1">
-                      <span className="text-[11px] md:text-[11px] text-white/40 font-bold uppercase tracking-widest leading-tight whitespace-nowrap">Win<br/>Rate</span>
-                      <span className="text-base md:text-lg font-bold text-cyan-400 leading-none">{row.winRate}</span>
+                  {/* Layout: avatar centred at top, rank + win-rate flanking, name + value below.
+                      Stays compact on phones; expands on tablet+. */}
+                  <div className="flex flex-col items-center w-full gap-1.5 sm:gap-2 flex-1 min-h-0">
+                    <PlayerAvatar
+                      name={row.player}
+                      avatarUrl={avatarMap[row.player]}
+                      size={realRank === 1 ? 72 : 60}
+                      className={`sm:hidden rounded-full border-[3px] shadow-lg ${borderColor} ${
+                        realRank === 1
+                          ? "shadow-yellow-400/30"
+                          : realRank === 2
+                            ? "shadow-gray-300/20"
+                            : "shadow-orange-400/20"
+                      }`}
+                    />
+                    <PlayerAvatar
+                      name={row.player}
+                      avatarUrl={avatarMap[row.player]}
+                      size={realRank === 1 ? 100 : 84}
+                      className={`hidden sm:block rounded-full border-[3px] shadow-lg ${borderColor} ${
+                        realRank === 1
+                          ? "shadow-yellow-400/30"
+                          : realRank === 2
+                            ? "shadow-gray-300/20"
+                            : "shadow-orange-400/20"
+                      }`}
+                    />
+                    <p className="font-black text-white text-xs sm:text-sm text-center max-w-full truncate leading-tight px-1">
+                      {row.player}
+                    </p>
+                    <div className="flex items-center justify-around w-full gap-2 mt-auto">
+                      <div className="flex flex-col items-center min-w-0">
+                        <span className={`text-base sm:text-xl font-black leading-none ${rankColor}`}>#{realRank}</span>
+                        <span className="text-[9px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest mt-0.5">{row.sessions} sess</span>
+                      </div>
+                      <div className="flex flex-col items-center min-w-0">
+                        <span className="text-sm sm:text-base font-bold text-cyan-400 leading-none">{row.winRate}</span>
+                        <span className="text-[9px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest mt-0.5">win</span>
+                      </div>
                     </div>
                   </div>
 
@@ -189,7 +197,7 @@ export default async function LeaderboardsPage({
 
       {/* Remaining rows */}
       {rest.length > 0 && (
-        <div className="flex-1 min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col overflow-hidden">
+        <div className="md:flex-1 md:min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col md:overflow-hidden">
           <div className="grid grid-cols-12 gap-3 px-4 py-2.5 border-b border-white/10 bg-black/20 text-xs font-bold text-white/40 uppercase tracking-widest shrink-0">
             <div className="col-span-2 text-center">Rank</div>
             <div className="col-span-5 md:col-span-4">Player</div>
@@ -198,7 +206,7 @@ export default async function LeaderboardsPage({
             <div className="hidden md:block col-span-2 text-center">Sessions</div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto divide-y divide-white/5">
+          <div className="md:flex-1 md:min-h-0 md:overflow-auto divide-y divide-white/5">
             {rest.map((row) => (
               <Link
                 key={row.rank}

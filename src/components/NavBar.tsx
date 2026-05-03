@@ -44,7 +44,7 @@ export default function NavBar() {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
-      className="border-b border-white/10 bg-white/5 backdrop-blur-xl px-6 xl:px-12 py-3 z-50 select-none shrink-0"
+      className="sticky top-0 border-b border-white/10 bg-[#0E1117]/95 md:bg-white/5 backdrop-blur-xl px-4 md:px-6 xl:px-12 py-3 z-50 select-none shrink-0"
     >
       <div className="w-full flex items-center justify-between gap-4">
         <Link

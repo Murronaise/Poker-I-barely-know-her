@@ -86,7 +86,7 @@ export default async function HistoricalGamePage({
   ];
 
   return (
-    <main className="flex-1 min-h-0 flex flex-col overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5">
+    <main className="flex-1 flex flex-col md:min-h-0 md:overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 shrink-0">
         <Link
@@ -106,7 +106,7 @@ export default async function HistoricalGamePage({
           <Calendar className="text-[#39FF14]" size={22} />
         </div>
         <div>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase leading-none">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
             {game.date}
           </h1>
           <p className="text-white/50 text-sm mt-2">{game.location} · {game.duration}</p>
