@@ -8,13 +8,15 @@ import {
   Search,
   ChevronRight,
   ArrowUpDown,
+  X,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import Sparkline from "@/components/Sparkline";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useMemo, useState } from "react";
-import { getStoredPlayers } from "@/lib/local-store";
+import { getStoredPlayers, removeStoredPlayer } from "@/lib/local-store";
+import { historicalGames } from "@/lib/historical-games";
 
 type PlayerRow = {
   name: string;
@@ -24,18 +26,52 @@ type PlayerRow = {
   lastPlayed: string;
   trend: number[];
   avatarUrl?: string | null;
+  /** True if this player only exists in localStorage (not in any historical
+   *  game). Local-only players can be removed; seed players cannot. */
+  isLocal?: boolean;
 };
 
-const seedPlayers: PlayerRow[] = [
-  { name: "Player G", profit: 2500, winRate: 68, sessions: 14, lastPlayed: "2 days ago", trend: [-200, 150, 800, 450, 1100, 2500] },
-  { name: "Player A", profit: 1200, winRate: 55, sessions: 22, lastPlayed: "1 week ago", trend: [400, 200, 800, 600, 950, 1200] },
-  { name: "Player B", profit: 800, winRate: 75, sessions: 8, lastPlayed: "2 weeks ago", trend: [-100, 50, 200, 350, 600, 800] },
-  { name: "Player E", profit: 150, winRate: 52, sessions: 42, lastPlayed: "3 days ago", trend: [-50, 60, 30, 100, 120, 150] },
-  { name: "Player H", profit: 50, winRate: 48, sessions: 12, lastPlayed: "1 month ago", trend: [-20, 10, 0, 30, 25, 50] },
-  { name: "Player F", profit: -100, winRate: 45, sessions: 18, lastPlayed: "1 week ago", trend: [120, 80, -20, -50, -90, -100] },
-  { name: "Player C", profit: -300, winRate: 40, sessions: 6, lastPlayed: "2 months ago", trend: [50, -40, -100, -180, -250, -300] },
-  { name: "Player D", profit: -500, winRate: 35, sessions: 10, lastPlayed: "3 weeks ago", trend: [200, 60, -100, -250, -400, -500] },
-];
+// Derive the roster + per-player stats from real game history. Means the
+// leaderboard, profile chart, and roster all stay in sync as new sessions
+// land in historical-games.ts.
+function computeSeedPlayers(): PlayerRow[] {
+  const byName = new Map<string, { date: string; net: number }[]>();
+  // historicalGames is stored most-recent-first; reverse so we walk
+  // chronologically for the running-net trend.
+  [...historicalGames].reverse().forEach((g) => {
+    g.players.forEach((p) => {
+      // Poker net only — food is handled via the food settlement, never
+      // baked into a player's headline profit.
+      const net = p.cashOut - p.buyIn;
+      if (!byName.has(p.name)) byName.set(p.name, []);
+      byName.get(p.name)!.push({ date: g.date, net });
+    });
+  });
+
+  return [...byName.entries()].map(([name, sessions]) => {
+    const profit = sessions.reduce((sum, s) => sum + s.net, 0);
+    const wins = sessions.filter((s) => s.net >= 0).length;
+    const winRate = Math.round((wins / sessions.length) * 100);
+    // Running cumulative net — drives the sparkline trend.
+    const trend = sessions.reduce<number[]>((acc, s) => {
+      const last = acc.length > 0 ? acc[acc.length - 1] : 0;
+      acc.push(Number((last + s.net).toFixed(2)));
+      return acc;
+    }, []);
+    // Pad to 6 points so every sparkline has the same shape.
+    while (trend.length < 6) trend.unshift(0);
+    return {
+      name,
+      profit: Number(profit.toFixed(2)),
+      winRate,
+      sessions: sessions.length,
+      lastPlayed: sessions[sessions.length - 1].date,
+      trend,
+    };
+  });
+}
+
+const seedPlayers: PlayerRow[] = computeSeedPlayers();
 
 type SortKey = "name" | "profit" | "winRate" | "sessions";
 
@@ -63,6 +99,7 @@ function computeLocalPlayers(): { rows: PlayerRow[]; avatarMap: Record<string, s
       lastPlayed: "Never",
       trend: [0, 0, 0, 0, 0, 0],
       avatarUrl: p.avatarUrl ?? null,
+      isLocal: true,
     }));
   const avatarMap: Record<string, string> = {};
   stored.forEach((p) => {
@@ -72,7 +109,21 @@ function computeLocalPlayers(): { rows: PlayerRow[]; avatarMap: Record<string, s
 }
 
 export default function PlayersIndexPage() {
-  const [extraPlayers] = useState<PlayerRow[]>(() => computeLocalPlayers().rows);
+  const [extraPlayers, setExtraPlayers] = useState<PlayerRow[]>(() => computeLocalPlayers().rows);
+
+  // Remove a locally-stored player (Test/Another etc). Only available for
+  // rows with isLocal === true; seed players from historical games can't be
+  // deleted from the UI.
+  const handleRemoveLocalPlayer = (name: string) => {
+    if (!confirm(`Remove ${name} from your local roster? Their stored avatar will also be cleared.`)) return;
+    removeStoredPlayer(name);
+    setExtraPlayers((prev) => prev.filter((p) => p.name !== name));
+    setAvatarMap((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>(
     () => computeLocalPlayers().avatarMap,
   );
@@ -227,7 +278,25 @@ export default function PlayersIndexPage() {
                     key={player.name}
                     href={`/profile/${encodeURIComponent(player.name.toLowerCase().replace(/ /g, "-"))}`}
                   >
-                    <div className="group bg-black/20 hover:bg-[#39FF14]/[0.07] border border-white/5 hover:border-[#39FF14]/30 rounded-xl p-4 transition-all cursor-pointer h-full flex gap-4 items-start">
+                    <div className="relative group bg-black/20 hover:bg-[#39FF14]/[0.07] border border-white/5 hover:border-[#39FF14]/30 rounded-xl p-4 transition-all cursor-pointer h-full flex gap-4 items-start">
+                      {/* Remove button — only for local-only players (Test
+                          accounts etc). Stops propagation so it doesn't
+                          navigate into the profile page. */}
+                      {player.isLocal && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveLocalPlayer(player.name);
+                          }}
+                          className="absolute top-2 right-2 z-10 w-7 h-7 rounded-full bg-black/40 hover:bg-red-500/30 border border-white/10 hover:border-red-400/60 text-white/40 hover:text-red-400 flex items-center justify-center transition-colors"
+                          title={`Remove ${player.name} from local roster`}
+                          aria-label={`Remove ${player.name}`}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
                       {/* Larger avatar — easy to recognize */}
                       <PlayerAvatar
                         name={player.name}

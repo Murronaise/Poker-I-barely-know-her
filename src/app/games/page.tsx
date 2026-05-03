@@ -20,9 +20,14 @@ import { useState } from "react";
 
 export default function GamesIndexPage() {
   const summary = [
-    { label: "Total Sessions", value: "14", icon: Activity, color: "text-[#39FF14]" },
-    { label: "Lifetime Pot", value: "£18,400", icon: Coins, color: "text-cyan-400" },
-    { label: "Avg Duration", value: "4h 52m", icon: Clock, color: "text-yellow-400" },
+    { label: "Total Sessions", value: String(historicalGames.length), icon: Activity, color: "text-[#39FF14]" },
+    {
+      label: "Lifetime Pot",
+      value: `£${historicalGames.reduce((sum, g) => sum + g.totalPot, 0).toLocaleString()}`,
+      icon: Coins,
+      color: "text-cyan-400",
+    },
+    { label: "Avg Duration", value: "2h 45m", icon: Clock, color: "text-yellow-400" },
     { label: "Most Active Day", value: "Friday", icon: Calendar, color: "text-purple-400" },
   ];
 
@@ -32,7 +37,7 @@ export default function GamesIndexPage() {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     const winner = [...game.players]
-      .map(p => ({ ...p, net: p.cashOut - p.buyIn - p.food }))
+      .map(p => ({ ...p, net: p.cashOut - p.buyIn }))
       .sort((a, b) => b.net - a.net)[0];
     
     if (game.date.toLowerCase().includes(q)) return true;
@@ -121,56 +126,62 @@ export default function GamesIndexPage() {
           {filteredGames.length > 0 ? (
             filteredGames.map((game) => {
             const winner = [...game.players]
-              .map((p) => ({ ...p, net: p.cashOut - p.buyIn - p.food }))
+              .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
               .sort((a, b) => b.net - a.net)[0];
             return (
               <Link
                 key={game.id}
                 href={`/games/history/${game.id}`}
-                className="group bg-black/20 hover:bg-white/5 border border-white/5 hover:border-[#39FF14]/30 rounded-xl p-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3"
+                className="group bg-black/20 hover:bg-white/5 border border-white/5 hover:border-[#39FF14]/30 rounded-xl p-4 transition-all grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_2fr_1fr] md:items-center gap-3 md:gap-4"
               >
-                <div className="flex items-center gap-4">
+                {/* Date */}
+                <div className="flex items-center gap-4 min-w-0">
                   <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/50 group-hover:text-[#39FF14] transition-colors border border-white/10 group-hover:border-[#39FF14]/30 shrink-0">
                     <Calendar size={16} />
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white/90 group-hover:text-white">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-bold text-white/90 group-hover:text-white truncate">
                       {game.date}
                     </h3>
-                    <p className="text-sm text-white/40">
+                    <p className="text-sm text-white/40 truncate">
                       {game.duration} · {game.blinds}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-6 md:gap-10">
-                  <div className="flex items-center gap-2">
-                    <Users size={14} className="text-white/40" />
-                    <div>
-                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Players</p>
-                      <p className="text-base font-bold text-white/80">{game.players.length}</p>
-                    </div>
+                {/* Players */}
+                <div className="flex items-center gap-2">
+                  <Users size={14} className="text-white/40 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Players</p>
+                    <p className="text-base font-bold text-white/80">{game.players.length}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <CircleDollarSign size={14} className="text-[#39FF14]/60" />
-                    <div>
-                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Pot</p>
-                      <p className="text-base font-bold text-[#39FF14]">£{game.totalPot.toLocaleString()}</p>
-                    </div>
+                </div>
+
+                {/* Pot */}
+                <div className="flex items-center gap-2">
+                  <CircleDollarSign size={14} className="text-[#39FF14]/60 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Pot</p>
+                    <p className="text-base font-bold text-[#39FF14]">£{game.totalPot.toLocaleString()}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Crown size={14} className="text-yellow-400" />
-                    <div>
-                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Winner</p>
-                      <p className="text-base font-bold text-yellow-400">
-                        {winner.name} <span className="text-[#39FF14]">+£{winner.net}</span>
-                      </p>
-                    </div>
+                </div>
+
+                {/* Winner */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <Crown size={14} className="text-yellow-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Winner</p>
+                    <p className="text-base font-bold text-yellow-400 truncate">
+                      {winner.name} <span className="text-[#39FF14]">+£{winner.net.toFixed(2)}</span>
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 group-hover:bg-[#39FF14]/10 group-hover:text-[#39FF14] text-white/60 text-sm font-bold tracking-widest uppercase transition-colors">
-                    View Details
-                    <ChevronRight size={14} className="opacity-70" />
-                  </div>
+                </div>
+
+                {/* View Details */}
+                <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 group-hover:bg-[#39FF14]/10 group-hover:text-[#39FF14] text-white/60 text-sm font-bold tracking-widest uppercase transition-colors">
+                  View Details
+                  <ChevronRight size={14} className="opacity-70 shrink-0" />
                 </div>
               </Link>
             );

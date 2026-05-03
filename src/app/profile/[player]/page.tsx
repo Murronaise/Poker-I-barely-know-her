@@ -36,15 +36,6 @@ import { historicalGames } from "@/lib/historical-games";
 import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
 
-const mockPerformanceData = [
-  { date: "Oct 01", profit: -200 },
-  { date: "Oct 05", profit: 150 },
-  { date: "Oct 10", profit: 800 },
-  { date: "Oct 15", profit: 450 },
-  { date: "Oct 20", profit: 1100 },
-  { date: "Oct 24", profit: 2500 },
-];
-
 export default function ProfilePage({
   params,
 }: {
@@ -151,7 +142,9 @@ export default function ProfilePage({
     }
   };
 
-  // Filter sessions where this player participated and link them to history
+  // Filter sessions where this player participated and link them to history.
+  // `net` here is the *poker* net (cash-out minus buy-in). Food is settled
+  // separately via the food-payer (Toby) and never folded into "net".
   const playerSessions = historicalGames
     .filter((g) => g.players.some((p) => p.name.toLowerCase() === playerName.toLowerCase()))
     .map((g) => {
@@ -162,13 +155,31 @@ export default function ProfilePage({
         buyIn: me.buyIn,
         cashOut: me.cashOut,
         food: me.food,
-        net: me.cashOut - me.buyIn - me.food,
+        net: me.cashOut - me.buyIn,
       };
     });
 
   const biggestWin = playerSessions.length > 0 ? Math.max(...playerSessions.map((s) => s.net)) : 0;
   const biggestLoss = playerSessions.length > 0 ? Math.min(...playerSessions.map((s) => s.net)) : 0;
   const totalFoodSpend = playerSessions.reduce((sum, s) => sum + s.food, 0);
+
+  // Derived headline stats
+  const totalNet = playerSessions.reduce((sum, s) => sum + s.net, 0);
+  const winsCount = playerSessions.filter((s) => s.net >= 0).length;
+  const winRatePct = playerSessions.length > 0 ? Math.round((winsCount / playerSessions.length) * 100) : 0;
+  const formatNet = (n: number) =>
+    `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
+
+  // Performance chart — running cumulative net across sessions in chronological
+  // order (playerSessions is most-recent-first, so reverse for the line).
+  const performanceData = [...playerSessions].reverse().reduce<{ date: string; profit: number }[]>(
+    (acc, s) => {
+      const last = acc.length > 0 ? acc[acc.length - 1].profit : 0;
+      acc.push({ date: s.date, profit: Number((last + s.net).toFixed(2)) });
+      return acc;
+    },
+    [],
+  );
 
   let streakCount = 0;
   let streakWin = true;
@@ -220,31 +231,6 @@ export default function ProfilePage({
         {/* Profile Header */}
         <div className="flex flex-col md:flex-row gap-5 items-start md:items-center">
           <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-            {/* Options menu when clicking existing avatar */}
-            {showAvatarMenu && (
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-[#0E1117] border border-white/15 rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.6)] z-30 overflow-hidden min-w-[180px]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => { setShowAvatarMenu(false); fileInputRef.current?.click(); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold text-white/80 hover:text-white hover:bg-white/5 transition-colors text-left"
-                >
-                  <Camera size={15} className="text-[#39FF14]" />
-                  {avatarUrl ? "Replace Image" : "Upload Image"}
-                </button>
-                <div className="border-t border-white/5" />
-                <button
-                  type="button"
-                  disabled={!avatarUrl}
-                  onClick={() => { setShowAvatarMenu(false); setShowPositioner(true); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold text-white/80 hover:text-white hover:bg-white/5 transition-colors text-left disabled:text-white/25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                >
-                  <Crop size={15} className="text-cyan-400" /> Adjust Frame
-                </button>
-              </div>
-            )}
             <input
               type="file"
               ref={fileInputRef}
@@ -267,12 +253,45 @@ export default function ProfilePage({
                 className="w-full h-full"
               />
             </div>
+            {/* Always-visible edit badge — sits in the bottom-right of the
+                avatar so it's discoverable on both desktop and mobile (no
+                hover required). Clicking the avatar (or the badge) toggles
+                the same menu. */}
+            <div className="absolute bottom-0 right-0 w-9 h-9 md:w-10 md:h-10 rounded-full bg-[#39FF14] text-black flex items-center justify-center border-2 border-[#0E1117] shadow-[0_0_15px_rgba(57,255,20,0.5)] group-hover:scale-110 transition-transform pointer-events-none">
+              <Camera size={16} />
+            </div>
             <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <Camera className="text-white mb-1" size={20} />
               <span className="text-xs font-bold tracking-widest uppercase text-white">
                 {avatarUrl ? "Edit" : "Upload"}
               </span>
             </div>
+            {/* Options menu — drops BELOW the avatar so it never lands above
+                the top of the viewport. */}
+            {showAvatarMenu && (
+              <div
+                className="absolute top-full left-0 mt-3 bg-[#0E1117] border border-white/15 rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.6)] z-30 overflow-hidden min-w-[200px]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => { setShowAvatarMenu(false); fileInputRef.current?.click(); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold text-white/80 hover:text-white hover:bg-white/5 transition-colors text-left"
+                >
+                  <Camera size={15} className="text-[#39FF14]" />
+                  {avatarUrl ? "Replace Image" : "Upload Image"}
+                </button>
+                <div className="border-t border-white/5" />
+                <button
+                  type="button"
+                  disabled={!avatarUrl}
+                  onClick={() => { setShowAvatarMenu(false); setShowPositioner(true); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold text-white/80 hover:text-white hover:bg-white/5 transition-colors text-left disabled:text-white/25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <Crop size={15} className="text-cyan-400" /> Adjust Frame
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex-1">
@@ -283,6 +302,13 @@ export default function ProfilePage({
               <Calendar size={13} className="text-[#39FF14]/70" />
               <span>{playerSessions.length} sessions tracked</span>
             </div>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleAvatarClick(); }}
+              className="mt-3 inline-flex items-center gap-2 text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
+            >
+              <Camera size={12} /> {avatarUrl ? "Change Picture" : "Upload Picture"}
+            </button>
           </div>
 
         </div>
@@ -290,10 +316,10 @@ export default function ProfilePage({
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { icon: TrendingUp, label: "Net Profit", value: "+£2,500", color: "text-[#39FF14]" },
-            { icon: Target, label: "Win Rate", value: "68%", color: "text-cyan-400" },
-            { icon: Clock, label: "Sessions", value: String(playerSessions.length || 14), color: "text-yellow-400" },
-            { icon: Shield, label: "VPIP", value: "22%", color: "text-emerald-400" },
+            { icon: TrendingUp, label: "Net Profit", value: formatNet(totalNet), color: totalNet >= 0 ? "text-[#39FF14]" : "text-red-400" },
+            { icon: Target, label: "Win Rate", value: `${winRatePct}%`, color: "text-cyan-400" },
+            { icon: Clock, label: "Sessions", value: String(playerSessions.length), color: "text-yellow-400" },
+            { icon: Shield, label: "VPIP", value: "—", color: "text-emerald-400" },
           ].map((m) => (
             <div
               key={m.label}
@@ -316,10 +342,10 @@ export default function ProfilePage({
         {playerSessions.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: "Best Session", value: `+£${biggestWin}`, color: "text-[#39FF14]", show: biggestWin > 0 },
-              { label: "Worst Session", value: `-£${Math.abs(biggestLoss)}`, color: "text-red-400", show: biggestLoss < 0 },
+              { label: "Best Session", value: `+£${biggestWin.toFixed(2)}`, color: "text-[#39FF14]", show: biggestWin > 0 },
+              { label: "Worst Session", value: `-£${Math.abs(biggestLoss).toFixed(2)}`, color: "text-red-400", show: biggestLoss < 0 },
               { label: streakWin ? "Win Streak" : "Loss Streak", value: `${streakCount}`, sub: streakWin ? "in a row" : "in a row", color: streakWin ? "text-[#39FF14]" : "text-red-400", show: streakCount > 0 },
-              { label: "Food Spend", value: `£${totalFoodSpend}`, color: "text-yellow-400", show: totalFoodSpend > 0 },
+              { label: "Food Spend", value: `£${totalFoodSpend.toFixed(2)}`, color: "text-yellow-400", show: totalFoodSpend > 0 },
             ].filter((s) => s.show).map((s) => (
               <div key={s.label} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex flex-col gap-0.5">
                 <p className="text-xs font-bold tracking-widest uppercase text-white/40">{s.label}</p>
@@ -339,7 +365,7 @@ export default function ProfilePage({
           <div className="h-[260px]">
             {isMounted ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={mockPerformanceData}>
+                <AreaChart data={performanceData}>
                   <defs>
                     <linearGradient id="colorProfitLine" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#39FF14" stopOpacity={0.3} />
@@ -438,15 +464,15 @@ export default function ProfilePage({
                     </div>
                     <div className="md:col-span-2 flex md:block items-center gap-2 md:text-right">
                       <CircleDollarSign size={11} className="md:hidden text-[#39FF14]/60" />
-                      <span className="text-base font-bold text-white/70">£{s.buyIn}</span>
+                      <span className="text-base font-bold text-white/70">£{s.buyIn.toFixed(2)}</span>
                     </div>
                     <div className="md:col-span-2 flex md:block items-center gap-2 md:text-right">
                       <ArrowRightSquare size={11} className="md:hidden text-red-400/60" />
-                      <span className="text-base font-bold text-white/70">£{s.cashOut}</span>
+                      <span className="text-base font-bold text-white/70">£{s.cashOut.toFixed(2)}</span>
                     </div>
                     <div className="md:col-span-2 flex md:block items-center gap-2 md:text-right">
                       <Pizza size={11} className="md:hidden text-yellow-400/60" />
-                      <span className="text-base font-bold text-white/70">£{s.food}</span>
+                      <span className="text-base font-bold text-white/70">£{s.food.toFixed(2)}</span>
                     </div>
                     <div className="col-span-2 md:col-span-3 text-right flex items-center justify-end gap-1">
                       <span
@@ -454,7 +480,7 @@ export default function ProfilePage({
                           positive ? "text-[#39FF14]" : "text-red-400"
                         }`}
                       >
-                        {positive ? "+" : ""}£{s.net}
+                        {positive ? "+" : ""}£{s.net.toFixed(2)}
                       </span>
                       <ChevronRight
                         size={14}

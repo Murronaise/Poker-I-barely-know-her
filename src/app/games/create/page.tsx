@@ -19,22 +19,35 @@ import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { toast } from "sonner";
 import { getVenue, setVenue, DEFAULT_VENUE } from "@/lib/local-store";
+import { historicalGames } from "@/lib/historical-games";
 
-const playerStats: Record<string, { winRate: number; lastResult: number | null }> = {
-  "Player A": { winRate: 55, lastResult: 50 },
-  "Player B": { winRate: 75, lastResult: -250 },
-  "Player C": { winRate: 40, lastResult: -280 },
-  "Player D": { winRate: 35, lastResult: -500 },
-  "Player E": { winRate: 52, lastResult: -80 },
-  "Player F": { winRate: 45, lastResult: -200 },
-  "Player G": { winRate: 68, lastResult: 750 },
-  "Player H": { winRate: 48, lastResult: -310 },
-};
+// Derive the picker's roster + win-rate / last-session badges from real
+// session history. Stays in sync if new games land in historical-games.ts.
+const { availablePlayers, playerStats } = (() => {
+  const byName = new Map<string, { date: string; net: number; idx: number }[]>();
+  // historicalGames is most-recent-first; preserve idx so we can find the
+  // most recent session per player below.
+  historicalGames.forEach((g, idx) => {
+    g.players.forEach((p) => {
+      const net = p.cashOut - p.buyIn - p.food;
+      if (!byName.has(p.name)) byName.set(p.name, []);
+      byName.get(p.name)!.push({ date: g.date, net, idx });
+    });
+  });
 
-const availablePlayers = [
-  "Player A", "Player B", "Player C", "Player D",
-  "Player E", "Player F", "Player G", "Player H",
-];
+  const stats: Record<string, { winRate: number; lastResult: number | null }> = {};
+  const names: string[] = [];
+  byName.forEach((sessions, name) => {
+    names.push(name);
+    const wins = sessions.filter((s) => s.net >= 0).length;
+    const winRate = Math.round((wins / sessions.length) * 100);
+    // Most recent session is the smallest idx (since list is recent-first).
+    const mostRecent = sessions.reduce((a, b) => (a.idx < b.idx ? a : b));
+    stats[name] = { winRate, lastResult: Number(mostRecent.net.toFixed(2)) };
+  });
+
+  return { availablePlayers: names.sort(), playerStats: stats };
+})();
 
 const blindPresets = [
   { sb: 0.10, bb: 0.20, label: "£0.10 / £0.20" },
@@ -192,7 +205,7 @@ export default function CreateGamePage() {
                       </span>
                       {playerStats[player].lastResult !== null && (
                         <span className={`text-[10px] font-bold tabular-nums ${playerStats[player].lastResult! >= 0 ? "text-[#39FF14]/60" : "text-red-400/60"}`}>
-                          {playerStats[player].lastResult! >= 0 ? "+" : ""}£{playerStats[player].lastResult}
+                          {playerStats[player].lastResult! >= 0 ? "+" : ""}£{playerStats[player].lastResult!.toFixed(2)}
                         </span>
                       )}
                     </div>

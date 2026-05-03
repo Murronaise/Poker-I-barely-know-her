@@ -18,6 +18,10 @@ const AVATAR_POS_KEY = "pt:avatarPos";
 const VENUE_KEY = "pt:venue";
 
 export const DEFAULT_VENUE = "Toby's House";
+// Whoever fronts the food order on game night — every other player owes them
+// their share of the food. Surfaced in the settlement breakdown so it's
+// obvious where the money goes.
+export const FOOD_PAYER = "Toby";
 export const defaultAvatarPosition: AvatarPosition = { x: 50, y: 50, scale: 1 };
 
 const readJSON = <T,>(key: string, fallback: T): T => {
@@ -48,6 +52,13 @@ export function addStoredPlayer(p: StoredPlayer) {
   const all = getStoredPlayers();
   if (all.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) return;
   all.push(p);
+  writeJSON(PLAYERS_KEY, all);
+}
+
+export function removeStoredPlayer(name: string) {
+  const all = getStoredPlayers().filter(
+    (p) => p.name.toLowerCase() !== name.toLowerCase(),
+  );
   writeJSON(PLAYERS_KEY, all);
 }
 

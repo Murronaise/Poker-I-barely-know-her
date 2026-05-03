@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { getHistoricalGame } from "@/lib/historical-games";
+import { FOOD_PAYER } from "@/lib/local-store";
 
 export default async function HistoricalGamePage({
   params,
@@ -24,8 +25,10 @@ export default async function HistoricalGamePage({
   const game = getHistoricalGame(id);
   if (!game) notFound();
 
+  // Net = pure poker performance (cash-out minus buy-in). Food is handled
+  // separately via the food-settlement section, so we don't subtract it here.
   const ranked = [...game.players]
-    .map((p) => ({ ...p, net: p.cashOut - p.buyIn - p.food }))
+    .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
     .sort((a, b) => b.net - a.net);
 
   const totalBuyIn = game.players.reduce((s, p) => s + p.buyIn, 0);
@@ -52,7 +55,26 @@ export default async function HistoricalGamePage({
     }
     return result;
   }
-  const settlements = calcSettlements(ranked);
+
+  // Settlement is split in two so it's clear who owes what for what:
+  //   1. Food — every non-FOOD_PAYER player with food > 0 owes the food payer
+  //      directly (he fronted the bill on his card).
+  //   2. Poker — standard min-flow settlement on pure poker net
+  //      (cash-out minus buy-in, food not deducted).
+  // If the food payer isn't in this session we fall back to the old combined
+  // net so we don't drop food owed entirely.
+  const foodPayerInGame = game.players.some((p) => p.name === FOOD_PAYER);
+  const foodSettlements = foodPayerInGame
+    ? game.players
+        .filter((p) => p.name !== FOOD_PAYER && p.food > 0.005)
+        .map((p) => ({ from: p.name, to: FOOD_PAYER, pence: Math.round(p.food * 100) }))
+        .sort((a, b) => b.pence - a.pence)
+    : [];
+  const pokerSettlements = foodPayerInGame
+    ? calcSettlements(
+        game.players.map((p) => ({ name: p.name, net: p.cashOut - p.buyIn })),
+      )
+    : calcSettlements(ranked); // fallback: combined (cash-out − buy-in − food)
 
   const facts = [
     { label: "Date", value: game.date, icon: Calendar, color: "text-[#39FF14]" },
@@ -64,7 +86,7 @@ export default async function HistoricalGamePage({
   ];
 
   return (
-    <main className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5">
+    <main className="flex-1 min-h-0 flex flex-col overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-6 xl:px-12 py-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 shrink-0">
         <Link
@@ -112,17 +134,17 @@ export default async function HistoricalGamePage({
       </div>
 
       {/* Settlement table */}
-      <div className="flex-1 min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col shrink-0">
         <div className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 border-b border-white/10 bg-black/40 text-xs md:text-sm font-bold text-white/40 uppercase tracking-wider shrink-0">
           <div className="col-span-1 text-center">#</div>
           <div className="col-span-4 md:col-span-3">Player</div>
           <div className="col-span-2 text-right">Buy-in</div>
           <div className="hidden md:block col-span-2 text-right">Cash Out</div>
-          <div className="hidden md:block col-span-1 text-right">Food</div>
-          <div className="col-span-5 md:col-span-3 text-right text-[#39FF14]">Net</div>
+          <div className="hidden md:block col-span-2 text-right">Food</div>
+          <div className="col-span-5 md:col-span-2 text-right text-[#39FF14]">Net</div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto divide-y divide-white/5">
+        <div className="divide-y divide-white/5">
           {ranked.map((p, i) => (
             <Link
               key={p.name}
@@ -141,22 +163,22 @@ export default async function HistoricalGamePage({
                 <span className="font-bold text-base md:text-lg truncate">{p.name}</span>
               </div>
               <div className="col-span-2 text-right">
-                <span className="text-base font-bold text-white/70">£{p.buyIn}</span>
+                <span className="text-base font-bold text-white/70">£{p.buyIn.toFixed(2)}</span>
               </div>
               <div className="hidden md:block col-span-2 text-right">
-                <span className="text-base font-bold text-white/70">£{p.cashOut}</span>
+                <span className="text-base font-bold text-white/70">£{p.cashOut.toFixed(2)}</span>
               </div>
-              <div className="hidden md:flex col-span-1 items-center justify-end gap-1">
+              <div className="hidden md:flex col-span-2 items-center justify-end gap-1">
                 <Pizza size={11} className="text-yellow-400/60" />
-                <span className="text-base font-bold text-white/70">£{p.food}</span>
+                <span className="text-base font-bold text-white/70">£{p.food.toFixed(2)}</span>
               </div>
-              <div className="col-span-5 md:col-span-3 text-right">
+              <div className="col-span-5 md:col-span-2 text-right">
                 <span
                   className={`text-lg md:text-xl font-black ${
                     p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
                   }`}
                 >
-                  {p.net >= 0 ? "+" : ""}£{p.net}
+                  {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
                 </span>
               </div>
             </Link>
@@ -171,33 +193,75 @@ export default async function HistoricalGamePage({
           </div>
           <div className="flex items-center gap-4 md:gap-6 text-sm">
             <span className="text-white/50">
-              Buy-ins: <span className="text-white/80 font-bold">£{totalBuyIn}</span>
+              Buy-ins: <span className="text-white/80 font-bold">£{totalBuyIn.toFixed(2)}</span>
             </span>
             <span className="text-white/50">
-              Food: <span className="text-yellow-400/80 font-bold">£{totalFood}</span>
+              Food: <span className="text-yellow-400/80 font-bold">£{totalFood.toFixed(2)}</span>
             </span>
             <span className="text-white/50">
-              Pot: <span className="text-[#39FF14] font-bold">£{game.totalPot}</span>
+              Pot: <span className="text-[#39FF14] font-bold">£{game.totalPot.toFixed(2)}</span>
             </span>
           </div>
         </div>
       </div>
 
-      {settlements.length > 0 && (
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 md:p-5 mt-4 shrink-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 shrink-0">
+      {foodSettlements.length > 0 && (
+        <div className="bg-white/5 backdrop-blur-xl border border-yellow-400/20 rounded-2xl p-4 md:p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-yellow-400/10 border border-yellow-400/20 shrink-0">
+              <Pizza className="text-yellow-400" size={18} />
+            </div>
+            <div>
+              <h3 className="text-base md:text-lg font-black tracking-widest uppercase">
+                Food &mdash; paid by {FOOD_PAYER}
+              </h3>
+              <p className="text-sm text-white/50 mt-0.5">
+                {FOOD_PAYER} fronts the food bill, so each player&rsquo;s share goes straight to {FOOD_PAYER}.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {foodSettlements.map((s, i) => (
+              <div
+                key={`food-${i}`}
+                className="flex items-center gap-3 bg-black/30 border border-yellow-400/15 rounded-xl px-4 py-3"
+              >
+                <PlayerAvatar name={s.from} size={44} className="rounded-full border border-yellow-400/30 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white/60 truncate font-semibold">{s.from}</p>
+                  <p className="text-xs text-white/30 uppercase tracking-widest">owes for food</p>
+                </div>
+                <span className="text-base font-black text-yellow-400 tabular-nums shrink-0">£{(s.pence / 100).toFixed(2)}</span>
+                <div className="w-px h-6 bg-white/10 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white/60 truncate font-semibold">{s.to}</p>
+                  <p className="text-xs text-white/30 uppercase tracking-widest">receives</p>
+                </div>
+                <PlayerAvatar name={s.to} size={44} className="rounded-full border border-yellow-400/40 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pokerSettlements.length > 0 && (
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 md:p-5">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-[#39FF14]/10 border border-[#39FF14]/20 shrink-0">
               <ArrowRightSquare className="text-[#39FF14]" size={18} />
             </div>
             <div>
-              <h3 className="text-base md:text-lg font-black tracking-widest uppercase">Settlement</h3>
-              <p className="text-sm text-white/50 mt-0.5">{settlements.length} transfer{settlements.length !== 1 ? "s" : ""} to clear all debts</p>
+              <h3 className="text-base md:text-lg font-black tracking-widest uppercase">Poker Settlement</h3>
+              <p className="text-sm text-white/50 mt-0.5">
+                {pokerSettlements.length} transfer{pokerSettlements.length !== 1 ? "s" : ""} between players to clear chip debts
+              </p>
             </div>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {settlements.map((s, i) => (
+          <div className="flex flex-col gap-2">
+            {pokerSettlements.map((s, i) => (
               <div
-                key={i}
+                key={`poker-${i}`}
                 className="flex items-center gap-3 bg-black/30 border border-white/10 rounded-xl px-4 py-3"
               >
                 <PlayerAvatar name={s.from} size={44} className="rounded-full border border-red-400/30 shrink-0" />
@@ -217,6 +281,7 @@ export default async function HistoricalGamePage({
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }

@@ -21,7 +21,6 @@ import {
   Pizza,
   Timer,
   Zap,
-  Shield,
   Users,
   Activity,
   Coins,
@@ -70,92 +69,95 @@ type MetricCard = {
 
 const metrics: MetricCard[] = [
   {
-    id: 1, title: "King of the Felt", subtext: "Most money won, all-time",
+    id: 1, title: "Money Printer",
+    subtext: "The biggest all-time winner.",
     categorySlug: "overall-leader",
-    player: "Player A", value: "+£1,200", icon: Trophy, valColor: "text-[#39FF14]",
+    player: "Jake", value: "+£56.65", icon: Trophy, valColor: "text-[#39FF14]",
     themeColor: "text-yellow-400", themeRgb: "250,204,21",
-    runnerUp: { name: "Player B", value: "+£800" }, lead: "+£400 ahead",
-    trend: [200, 350, 600, 700, 950, 1200], trendPositive: true,
+    runnerUp: { name: "Tony", value: "+£42.50" }, lead: "+£14.15 ahead",
+    trend: [0, 0, 0, 0, 0.15, 56.65], trendPositive: true,
   },
   {
-    id: 2, title: "Apex Predator", subtext: "Best win rate (sessions in profit)",
+    id: 2, title: "Probably Cheating",
+    subtext: "Wins so consistently it raises eyebrows.",
     categorySlug: "the-shark",
-    player: "Player B", value: "75%", icon: Swords, valColor: "text-[#39FF14]",
+    player: "Jake", value: "100%", icon: Swords, valColor: "text-[#39FF14]",
     themeColor: "text-[#39FF14]", themeRgb: "57,255,20",
-    runnerUp: { name: "Player G", value: "68%" }, lead: "+7 pts ahead",
-    trend: [62, 65, 70, 71, 73, 75], trendPositive: true,
+    runnerUp: { name: "Connor", value: "100%" }, lead: "tied — Jake biggest profit",
+    trend: [50, 100, 100, 100, 100, 100], trendPositive: true,
   },
   {
-    id: 3, title: "Deep Pockets", subtext: "Most chips bought across all sessions",
+    id: 3, title: "Mortgage Material",
+    subtext: "Has pushed the most chips across the table.",
     categorySlug: "the-whale",
-    player: "Player C", value: "£5,000", icon: CircleDollarSign, valColor: "text-cyan-400",
+    player: "Tristan", value: "£170", icon: CircleDollarSign, valColor: "text-cyan-400",
     themeColor: "text-cyan-400", themeRgb: "34,211,238",
-    runnerUp: { name: "Player E", value: "£4,200" }, lead: "+£800 over runner-up",
-    trend: [1200, 2100, 2800, 3400, 4200, 5000], trendPositive: true,
+    runnerUp: { name: "Harry", value: "£105" }, lead: "+£65 over runner-up",
+    trend: [35, 35, 55, 95, 95, 170], trendPositive: true,
   },
   {
-    id: 4, title: "Bag of Bricks", subtext: "Worst single-session loss",
+    id: 4, title: "The Pit",
+    subtext: "Took the worst beating in a single night.",
     categorySlug: "the-tank",
-    player: "Player D", value: "-£800", icon: Anchor, valColor: "text-red-400",
+    player: "Tristan", value: "-£75.00", icon: Anchor, valColor: "text-red-400",
     themeColor: "text-red-400", themeRgb: "248,113,113",
-    runnerUp: { name: "Player C", value: "-£620" }, lead: "across 3 sessions",
-    trend: [-100, -250, -400, -520, -700, -800], trendPositive: false,
+    runnerUp: { name: "Harry", value: "-£42.30" }, lead: "May 1, 2026 session",
+    trend: [-26, -26, -26, -26, -26, -75], trendPositive: false,
   },
   {
-    id: 5, title: "Pizza Hoover", subtext: "Most spent on snacks & takeaways",
+    id: 5, title: "Food Gremlin",
+    subtext: "Eats more than they play.",
     categorySlug: "the-vacuum",
-    player: "Player E", value: "£350", icon: Pizza, valColor: "text-orange-400",
+    player: "Jake", value: "£48.95", icon: Pizza, valColor: "text-orange-400",
     themeColor: "text-orange-400", themeRgb: "251,146,60",
-    runnerUp: { name: "Player A", value: "£280" }, lead: "≈ £8 per session",
-    trend: [40, 110, 180, 230, 290, 350], trendPositive: true,
+    runnerUp: { name: "Kai", value: "£40.66" }, lead: "+£8.29 over runner-up",
+    trend: [0, 0, 37.15, 37.15, 37.15, 48.95], trendPositive: true,
   },
   {
-    id: 6, title: "Iron Bladder", subtext: "Most sessions logged, full stop",
+    id: 6, title: "Part of the Furniture",
+    subtext: "Never misses a session — practically lives at the table.",
     categorySlug: "the-grinder",
-    player: "Player F", value: "42 Sessions", icon: Timer, valColor: "text-blue-400",
+    player: "Kai", value: "4 Sessions", icon: Timer, valColor: "text-blue-400",
     themeColor: "text-blue-400", themeRgb: "96,165,250",
-    runnerUp: { name: "Player A", value: "22" }, lead: "+20 over runner-up",
-    trend: [12, 18, 24, 30, 36, 42], trendPositive: true,
+    runnerUp: { name: "Toby", value: "4" }, lead: "tied with Toby & Tristan",
+    trend: [1, 1, 2, 3, 3, 4], trendPositive: true,
   },
   {
-    id: 7, title: "Roller Coaster", subtext: "Biggest single-session swing",
+    id: 7, title: "Cardiac Episode",
+    subtext: "Wild swings between best and worst nights.",
     categorySlug: "the-maniac",
-    player: "Player G", value: "£1,500 Swing", icon: Zap, valColor: "text-purple-400",
+    player: "Tristan", value: "£99.40 Swing", icon: Zap, valColor: "text-purple-400",
     themeColor: "text-purple-400", themeRgb: "192,132,252",
-    runnerUp: { name: "Player C", value: "£1,200" }, lead: "peak in last 5 games",
-    trend: [200, -400, 800, -300, 1100, 1500], trendPositive: true,
-  },
-  {
-    id: 8, title: "Stone Wall", subtext: "Tightest player (lowest VPIP)",
-    categorySlug: "the-rock",
-    player: "Player H", value: "12% VPIP", icon: Shield, valColor: "text-emerald-400",
-    themeColor: "text-emerald-400", themeRgb: "52,211,153",
-    runnerUp: { name: "Player B", value: "16%" }, lead: "vs 30% table avg",
-    trend: [16, 14, 13, 13, 12, 12], trendPositive: false,
+    runnerUp: { name: "Jake", value: "£56.35" }, lead: "−£75.00 to +£24.40",
+    trend: [26, 26, 26, 75, 100, 99.4], trendPositive: true,
   },
 ];
 
+// Lifetime poker net per player (cash-out minus buy-in, food settled separately).
+// `magnitude` is what Recharts uses for the bar height so every stack grows up
+// from the same £0 baseline; `profit` keeps the sign so the chip shape can
+// colour itself green / red and the tooltip can show the real value.
 const trueDataArray = [
-  { name: "Player G", profit: 2500 },
-  { name: "Player A", profit: 1200 },
-  { name: "Player B", profit: 800 },
-  { name: "Player E", profit: 150 },
-  { name: "Player H", profit: 50 },
-  { name: "Player F", profit: -100 },
-  { name: "Player C", profit: -300 },
-  { name: "Player D", profit: -500 },
+  { name: "Jake", profit: 56.65, magnitude: 56.65 },
+  { name: "Tony", profit: 42.5, magnitude: 42.5 },
+  { name: "Toby", profit: 31.2, magnitude: 31.2 },
+  { name: "Connor", profit: 27.8, magnitude: 27.8 },
+  { name: "Liam", profit: 2, magnitude: 2 },
+  { name: "Kai", profit: -32.3, magnitude: 32.3 },
+  { name: "Harry", profit: -52.45, magnitude: 52.45 },
+  { name: "Tristan", profit: -75.4, magnitude: 75.4 },
 ];
 
 const headlineStats = [
-  { label: "Sessions", value: "14", icon: Activity, color: "text-[#39FF14]" },
-  { label: "Total Volume", value: "£18,400", icon: Coins, color: "text-cyan-400" },
+  { label: "Sessions", value: "4", icon: Activity, color: "text-[#39FF14]" },
+  { label: "Total Volume", value: "£615", icon: Coins, color: "text-cyan-400" },
   { label: "Players", value: "8", icon: Users, color: "text-yellow-400" },
-  { label: "Net Across Table", value: "+£3,800", icon: TrendingUp, color: "text-[#39FF14]" },
+  { label: "Biggest Pot", value: "£250", icon: TrendingUp, color: "text-[#39FF14]" },
 ];
 
 const recentSessions = historicalGames.slice(0, 4).map((g) => {
   const ranked = [...g.players]
-    .map((p) => ({ ...p, net: p.cashOut - p.buyIn - p.food }))
+    .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
     .sort((a, b) => b.net - a.net);
   const winner = ranked[0];
   return {
@@ -375,16 +377,12 @@ export default function Dashboard() {
               <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase leading-none">
                 Dashboard
               </h1>
-              <p className="text-white/50 text-base mt-2 flex items-center gap-2 flex-wrap">
-                {currentDate && (
-                  <>
-                    <Calendar size={14} className="text-[#39FF14]/60 shrink-0" />
-                    <span>{currentDate}</span>
-                    <span className="text-white/30">·</span>
-                  </>
-                )}
-                <span>14 sessions tracked</span>
-              </p>
+              {currentDate && (
+                <p className="text-white/50 text-base mt-2 flex items-center gap-2 flex-wrap">
+                  <Calendar size={14} className="text-[#39FF14]/60 shrink-0" />
+                  <span>{currentDate}</span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -594,13 +592,13 @@ export default function Dashboard() {
                     <YAxis
                       stroke="#ffffff40"
                       tick={{ fill: "#ffffff80", fontSize: 13 }}
-                      tickFormatter={(val) => (val < 0 ? `-£${Math.abs(val)}` : `£${val}`)}
+                      tickFormatter={(val) => `£${val}`}
                       axisLine={false}
                       tickLine={false}
                       dx={-8}
                       domain={[
-                        Math.floor(Math.min(0, ...chartData.map((d) => d.profit)) * 1.2),
-                        Math.ceil(Math.max(0, ...chartData.map((d) => d.profit)) * 1.2),
+                        0,
+                        Math.ceil(Math.max(...chartData.map((d) => d.magnitude)) * 1.2),
                       ]}
                     />
                     <Tooltip
@@ -612,12 +610,14 @@ export default function Dashboard() {
                         backdropFilter: "blur(8px)",
                       }}
                       itemStyle={{ color: "#39FF14", fontWeight: 600 }}
-                      formatter={(value) => {
-                        const n = Number(value);
-                        return [n < 0 ? `-£${Math.abs(n)}` : `£${n}`, "Profit"];
+                      // Show the *real* signed profit in the tooltip even though
+                      // the bar height is rendered from the magnitude.
+                      formatter={(_value, _name, entry) => {
+                        const n = Number((entry?.payload as { profit?: number } | undefined)?.profit ?? 0);
+                        return [n < 0 ? `-£${Math.abs(n).toFixed(2)}` : `+£${n.toFixed(2)}`, "Net Profit"];
                       }}
                     />
-                    <Bar dataKey="profit" shape={<ChipStackShape />} isAnimationActive={false} />
+                    <Bar dataKey="magnitude" shape={<ChipStackShape />} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -698,7 +698,7 @@ export default function Dashboard() {
                           positive ? "text-[#39FF14]" : "text-red-400"
                         }`}
                       >
-                        {positive ? "+" : ""}£{s.winner.net}
+                        {positive ? "+" : ""}£{s.winner.net.toFixed(2)}
                       </p>
                     </div>
                     <ChevronRight
@@ -710,7 +710,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between text-xs text-white/40">
                     <span className="font-mono">{s.blinds}</span>
                     <span className="flex items-center gap-2">
-                      <span className="text-cyan-400 font-bold">£{s.pot}</span>
+                      <span className="text-cyan-400 font-bold">£{s.pot.toFixed(2)}</span>
                       <span className="text-white/30">·</span>
                       <span>{s.playerCount}p</span>
                     </span>
