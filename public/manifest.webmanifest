@@ -1,0 +1,18 @@
+{
+  "name": "Poker Tracker",
+  "short_name": "Poker",
+  "description": "A premium live session tracker for home poker games — buy-ins, blinds, payouts, and player superlatives.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E1117",
+  "theme_color": "#0E1117",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32 48x48 64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useIsMounted, useSessionItem } from "@/lib/use-hydration";
+import { useReducedMotion } from "framer-motion";
 import {
   BarChart,
   Bar,
@@ -148,11 +149,57 @@ const trueDataArray = [
   { name: "Tristan", profit: -75.4, magnitude: 75.4 },
 ];
 
-const headlineStats = [
-  { label: "Sessions", value: "4", icon: Activity, color: "text-[#39FF14]" },
-  { label: "Total Volume", value: "£615", icon: Coins, color: "text-cyan-400" },
-  { label: "Players", value: "8", icon: Users, color: "text-yellow-400" },
-  { label: "Biggest Pot", value: "£250", icon: TrendingUp, color: "text-[#39FF14]" },
+// Derive all headline numbers from `historicalGames` so they stay accurate
+// when sessions are added or removed.
+const totalVolume = historicalGames.reduce((sum, g) => sum + g.totalPot, 0);
+const uniquePlayerCount = new Set(
+  historicalGames.flatMap((g) => g.players.map((p) => p.name)),
+).size;
+const biggestGame = historicalGames.reduce(
+  (best, g) => (g.totalPot > (best?.totalPot ?? 0) ? g : best),
+  historicalGames[0],
+);
+
+const headlineStats: {
+  label: string;
+  value: string;
+  icon: typeof Activity;
+  color: string;
+  href: string;
+  ariaLabel: string;
+}[] = [
+  {
+    label: "Sessions",
+    value: String(historicalGames.length),
+    icon: Activity,
+    color: "text-[#39FF14]",
+    href: "/games",
+    ariaLabel: `${historicalGames.length} sessions tracked. Open games list.`,
+  },
+  {
+    label: "Total Volume",
+    value: `£${totalVolume.toLocaleString()}`,
+    icon: Coins,
+    color: "text-cyan-400",
+    href: "/stats",
+    ariaLabel: `Total volume £${totalVolume}. Open volume breakdown.`,
+  },
+  {
+    label: "Players",
+    value: String(uniquePlayerCount),
+    icon: Users,
+    color: "text-yellow-400",
+    href: "/players",
+    ariaLabel: `${uniquePlayerCount} players. Open roster.`,
+  },
+  {
+    label: "Biggest Pot",
+    value: `£${biggestGame.totalPot.toLocaleString()}`,
+    icon: TrendingUp,
+    color: "text-[#39FF14]",
+    href: `/games/history/${biggestGame.id}`,
+    ariaLabel: `Biggest pot £${biggestGame.totalPot} on ${biggestGame.date}. Open that session.`,
+  },
 ];
 
 const recentSessions = historicalGames.slice(0, 4).map((g) => {
@@ -194,37 +241,31 @@ const ChipStackShape = (props: ChipStackProps) => {
   const baseColor = isPositive ? "#22c55e" : "#ef4444";
   const darkColor = isPositive ? "#14532d" : "#7f1d1d";
 
+  // CSS-driven drop-in (see `chip-drop` keyframes in globals.css). Cheaper than
+  // a per-chip Framer Motion node — one animation per chip, GPU-composited,
+  // and automatically suppressed by `prefers-reduced-motion`.
   const chips = [];
 
   for (let i = 0; i < numChips; i++) {
     const chipY = baseLine - chipThickness * (i + 1);
+    // i = 0 is the bottom chip; it lands first, the rest stack on top of it.
+    const delay = `${i * 60}ms`;
 
     chips.push(
-      <motion.g
+      <g
         key={`${payload.name}-${i}`}
-        initial={{ y: -chipY - 800, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: "tween", ease: "easeIn", duration: 0.6, delay: i * 0.08 }}
+        className="chip-drop"
+        style={{ animationDelay: delay }}
       >
-        {/* Curved bottom rim — extends ry below chipY+chipThickness, which
-            (for chips above the bottom one) lands on top of the chip below
-            and creates the visible "stacked rim" between chips. */}
         <ellipse cx={cx} cy={chipY + chipThickness} rx={rx} ry={ry} fill={darkColor} />
-        {/* Cylinder side */}
         <rect x={cx - rx} y={chipY} width={rx * 2} height={chipThickness} fill={darkColor} />
-        {/* Side ticks — kept strictly within the cylinder rect (no ry overflow)
-            so the bottom-most chip's tick never hangs below the stack, and
-            every chip's tick sits at the exact same x range as the chip
-            above/below for clean vertical alignment. */}
         <rect x={cx - rx} y={chipY} width={3} height={chipThickness} fill="#ffffff" opacity={0.8} />
         <rect x={cx + rx - 3} y={chipY} width={3} height={chipThickness} fill="#ffffff" opacity={0.8} />
         <rect x={cx - 3} y={chipY} width={6} height={chipThickness} fill="#ffffff" opacity={0.8} />
-        {/* Top face + dashed inner ring + dot. Per-chip so stacking still
-            shows distinct rims even when only the topmost top is visible. */}
         <ellipse cx={cx} cy={chipY} rx={rx} ry={ry} fill={baseColor} />
         <ellipse cx={cx} cy={chipY} rx={rx * 0.75} ry={ry * 0.75} fill="transparent" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="3 3" opacity={0.9} />
         <ellipse cx={cx} cy={chipY} rx={rx * 0.4} ry={ry * 0.4} fill={darkColor} opacity={0.3} />
-      </motion.g>
+      </g>
     );
   }
 
@@ -235,8 +276,10 @@ export default function Dashboard() {
   const router = useRouter();
   const chartData = trueDataArray;
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
+  const [avatarsLoading, setAvatarsLoading] = useState(true);
   const isMounted = useIsMounted();
   const liveGameId = useSessionItem("liveGameId");
+  const reduceMotion = useReducedMotion();
   const currentDate = useMemo(
     () =>
       isMounted
@@ -249,35 +292,66 @@ export default function Dashboard() {
     [isMounted],
   );
 
+  // Coarse-pointer detection so we can swap the desktop CSS-marquee for a
+  // native horizontal scroller on phones / tablets. Native scroll lets users
+  // pan with the same gesture they already use everywhere else (no fight with
+  // vertical page scroll) and gives us inertia for free.
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsCoarsePointer(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const marqueeScrollerRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | undefined>(undefined);
   const posRef = useRef(0);
   const halfWidthRef = useRef(0);
   const isPausedRef = useRef(false);
-  const dragRef = useRef<{ active: boolean; startX: number; startPos: number; lastX: number; velocity: number } | null>(null);
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startPos: number;
+    lastX: number;
+    velocity: number;
+    moved: boolean;
+  } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchDashboardData() {
       try {
         const { data: playersData } = await supabase
           .from("players")
           .select("name, avatar_url");
+        if (cancelled) return;
         if (playersData) {
           const map: Record<string, string> = {};
-          playersData.forEach((p) => {
+          playersData.forEach((p: { name: string; avatar_url?: string | null }) => {
             if (p.avatar_url) map[p.name] = p.avatar_url;
           });
           setAvatarMap(map);
         }
       } catch {
-        // ignore
+        // Stub client / network failure — fall back to placeholder avatars.
+      } finally {
+        if (!cancelled) setAvatarsLoading(false);
       }
     }
-
     fetchDashboardData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // Desktop / fine-pointer marquee: continuous auto-scroll driven by RAF so we
+  // can swap to drag mid-stream. On coarse pointers we skip the loop entirely
+  // and let the browser's native scroller handle pan + inertia.
   useEffect(() => {
+    if (isCoarsePointer) return;
     const el = marqueeRef.current;
     if (!el) return;
 
@@ -305,9 +379,10 @@ export default function Dashboard() {
       clearTimeout(timer);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  }, [isCoarsePointer]);
 
   const handleMarqueePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isCoarsePointer) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       active: true,
@@ -315,6 +390,7 @@ export default function Dashboard() {
       startPos: posRef.current,
       lastX: e.clientX,
       velocity: 0,
+      moved: false,
     };
   };
 
@@ -322,6 +398,7 @@ export default function Dashboard() {
     const d = dragRef.current;
     if (!d?.active || !marqueeRef.current) return;
     const delta = e.clientX - d.startX;
+    if (Math.abs(delta) > 4) d.moved = true;
     d.velocity = e.clientX - d.lastX;
     d.lastX = e.clientX;
     posRef.current = d.startPos + delta;
@@ -340,7 +417,11 @@ export default function Dashboard() {
     const coast = () => {
       v *= 0.93;
       if (Math.abs(v) < 0.15) {
-        dragRef.current = null;
+        // Keep `dragRef` set briefly so the click handler on the underlying
+        // card can detect "this was a drag, swallow the click".
+        setTimeout(() => {
+          if (dragRef.current && !dragRef.current.active) dragRef.current = null;
+        }, 120);
         return;
       }
       posRef.current += v;
@@ -356,10 +437,40 @@ export default function Dashboard() {
     requestAnimationFrame(coast);
   };
 
+  // Keyboard nav for the marquee row: ← / → scrolls one card at a time on
+  // touch (where the row is a native scroller); on desktop, nudge the JS pos.
+  const handleMarqueeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    if (isCoarsePointer) {
+      const el = marqueeScrollerRef.current;
+      if (!el) return;
+      const card = el.querySelector<HTMLElement>("[data-marquee-card]");
+      const step = (card?.offsetWidth ?? 320) + 20;
+      if (e.key === "ArrowLeft") el.scrollBy({ left: -step, behavior: "smooth" });
+      else if (e.key === "ArrowRight") el.scrollBy({ left: step, behavior: "smooth" });
+      else if (e.key === "Home") el.scrollTo({ left: 0, behavior: "smooth" });
+      else el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
+    } else if (marqueeRef.current) {
+      const step = 360;
+      posRef.current += e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0;
+      if (e.key === "Home") posRef.current = 0;
+      if (halfWidthRef.current > 0) {
+        while (posRef.current > 0) posRef.current -= halfWidthRef.current;
+        while (Math.abs(posRef.current) >= halfWidthRef.current) posRef.current += halfWidthRef.current;
+      }
+      marqueeRef.current.style.transform = `translateX(${posRef.current}px)`;
+    }
+  };
+
+  // When the user has `prefers-reduced-motion`, skip the staggered page-level
+  // entrance entirely so nothing fades or shifts on mount.
+  const motionInitial = reduceMotion ? false : "hidden";
+
   return (
     <motion.div
       variants={pageVariants}
-      initial="hidden"
+      initial={motionInitial}
       animate="show"
       className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.08)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA]"
     >
@@ -429,55 +540,90 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               whileHover={{ scale: 1.02, y: -2 }}
               transition={{ delay: 0.08 + i * 0.06, duration: 0.4, ease: "easeOut" }}
-              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-white/20 hover:bg-white/10 transition-all cursor-default"
             >
-              <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
-                <s.icon className={s.color} size={16} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold tracking-widest uppercase text-white/40">
-                  {s.label}
-                </p>
-                <p className="text-lg md:text-xl font-black text-white truncate animate-count-pop">
-                  {s.value}
-                </p>
-              </div>
+              <Link
+                href={s.href}
+                aria-label={s.ariaLabel}
+                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-[#39FF14]/40 hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 group"
+              >
+                <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
+                  <s.icon className={s.color} size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold tracking-widest uppercase text-white/40">
+                    {s.label}
+                  </p>
+                  <p className="text-lg md:text-xl font-black text-white truncate animate-count-pop">
+                    {s.value}
+                  </p>
+                </div>
+                <ChevronRight
+                  size={14}
+                  aria-hidden="true"
+                  className="text-white/20 group-hover:text-[#39FF14] transition-colors shrink-0"
+                />
+              </Link>
             </motion.div>
           ))}
         </div>
       </motion.div>
 
-      {/* Marquee with metric superlatives — fades out exactly at the static tile edges */}
+      {/* Marquee with metric superlatives.
+          - Desktop / fine-pointer: JS auto-scroll with click-and-drag support.
+            Pauses on hover/focus, resumes on leave. Drag distance > 4px swallows
+            the next click so dragging doesn't accidentally navigate.
+          - Touch / coarse-pointer: native horizontal scroller — no JS pointer
+            capture, so it never fights vertical page scroll.
+          - Either way the row is a focusable region that responds to ←/→/Home/End. */}
       <div className="relative shrink-0">
         <div
-          className="dashboard-marquee-mask overflow-hidden py-4 cursor-grab active:cursor-grabbing select-none"
+          ref={marqueeScrollerRef}
+          role="region"
+          aria-label="Player superlatives — drag to scroll, or use left and right arrow keys"
+          tabIndex={0}
+          onKeyDown={handleMarqueeKeyDown}
           onMouseEnter={() => { isPausedRef.current = true; }}
           onMouseLeave={() => { isPausedRef.current = false; }}
+          className={`dashboard-marquee-mask py-4 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/50 rounded-xl ${
+            isCoarsePointer
+              ? "overflow-x-auto overflow-y-hidden snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              : "overflow-hidden cursor-grab active:cursor-grabbing"
+          }`}
         >
           <div
             ref={marqueeRef}
-            className="flex w-max gap-5"
+            className={`flex gap-5 w-max ${isCoarsePointer ? "px-4 md:px-6" : ""}`}
             style={{ willChange: "transform" }}
             onPointerDown={handleMarqueePointerDown}
             onPointerMove={handleMarqueePointerMove}
             onPointerUp={handleMarqueePointerUp}
             onPointerCancel={handleMarqueePointerUp}
           >
-            {[...metrics, ...metrics].map((metric, idx) => (
-              <motion.div
+            {(isCoarsePointer ? metrics : [...metrics, ...metrics]).map((metric, idx) => (
+              <div
                 key={`${metric.id}-${idx}`}
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, ease: "easeOut", delay: idx < metrics.length ? idx * 0.06 : 0 }}
-                whileHover={{ scale: 1.04, y: -3 }}
+                data-marquee-card
+                role="button"
+                tabIndex={0}
+                aria-label={`${metric.title} — leader ${metric.player} (${metric.value}). Open ${metric.title} leaderboard.`}
                 onClick={() => {
-                  if (dragRef.current && !dragRef.current.active && Math.abs(dragRef.current.startPos - posRef.current) > 5) return;
+                  // If the user just dragged the row, swallow the click so
+                  // navigation doesn't fire on the release.
+                  if (dragRef.current?.moved) return;
                   router.push(`/leaderboards?category=${metric.categorySlug}`);
                 }}
-                className="w-[280px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/leaderboards?category=${metric.categorySlug}`);
+                  }
+                }}
+                className={`w-[280px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-2xl ${
+                  isCoarsePointer ? "snap-start" : ""
+                }`}
               >
                 <div
-                  className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/15 hover:border-white/30 transition-all duration-300 rounded-2xl p-4 flex flex-col h-full group select-none relative overflow-hidden"
+                  className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/15 hover:border-white/30 hover:-translate-y-0.5 transition-all duration-300 rounded-2xl p-4 flex flex-col h-full group select-none relative overflow-hidden"
                   style={{
                     boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
                   }}
@@ -508,8 +654,13 @@ export default function Dashboard() {
                   <div className="flex items-center gap-3 mt-3 relative z-10">
                     <Link
                       href={`/profile/${encodeURIComponent(metric.player.toLowerCase().replace(/ /g, "-"))}`}
+                      // Stop pointer events from reaching the marquee row (which
+                      // otherwise calls setPointerCapture and steals the click)
+                      // so tapping the avatar always navigates to the profile.
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
-                      className="relative z-20 shrink-0"
+                      aria-label={`Open ${metric.player}'s profile`}
+                      className="relative z-20 shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60"
                     >
                       <PlayerAvatar
                         name={metric.player}
@@ -544,15 +695,18 @@ export default function Dashboard() {
                     <Sparkline data={metric.trend} positive={metric.trendPositive} width={60} height={22} />
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
 
       </div>
 
-      {/* Bottom: Heatmap + Recent Sessions side panel */}
-      <div className="md:flex-1 md:min-h-0 px-4 md:px-6 xl:px-12 pb-4 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
+      {/* Bottom: Heatmap + Recent Sessions side panel.
+          Recent panel surfaces from `lg` (was xl-only — invisible on iPad and
+          1024-1279px laptops). Width is min 320px and grows so wide screens
+          aren't capped at the old fixed 360px. */}
+      <div className="md:flex-1 md:min-h-0 px-4 md:px-6 xl:px-12 pb-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,28rem)] gap-3">
         {/* Heatmap */}
         <motion.div
           variants={sectionVariants}
@@ -604,17 +758,29 @@ export default function Dashboard() {
                     <Tooltip
                       cursor={{ fill: "rgba(57,255,20,0.05)" }}
                       contentStyle={{
-                        backgroundColor: "rgba(14,17,23,0.9)",
-                        border: "1px solid rgba(255,255,255,0.1)",
+                        backgroundColor: "rgba(14,17,23,0.95)",
+                        border: "1px solid rgba(255,255,255,0.15)",
                         borderRadius: "12px",
                         backdropFilter: "blur(8px)",
+                        color: "#FAFAFA",
                       }}
-                      itemStyle={{ color: "#39FF14", fontWeight: 600 }}
-                      // Show the *real* signed profit in the tooltip even though
-                      // the bar height is rendered from the magnitude.
+                      labelStyle={{ color: "#FAFAFA", fontWeight: 700 }}
+                      // Show the *real* signed profit; explicit ±/Win/Loss text
+                      // means the tooltip doesn't lean on color alone (was
+                      // green-only, unreadable for protanopia/deuteranopia).
                       formatter={(_value, _name, entry) => {
                         const n = Number((entry?.payload as { profit?: number } | undefined)?.profit ?? 0);
-                        return [n < 0 ? `-£${Math.abs(n).toFixed(2)}` : `+£${n.toFixed(2)}`, "Net Profit"];
+                        const sign = n < 0 ? "−" : "+";
+                        const label = n < 0 ? "Net Loss" : "Net Profit";
+                        return [
+                          <span
+                            key="v"
+                            style={{ color: n < 0 ? "#fca5a5" : "#39FF14", fontWeight: 700 }}
+                          >
+                            {sign}£{Math.abs(n).toFixed(2)}
+                          </span>,
+                          label,
+                        ];
                       }}
                     />
                     <Bar dataKey="magnitude" shape={<ChipStackShape />} isAnimationActive={false} />
@@ -640,10 +806,11 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Recent Sessions side panel — xl only */}
+        {/* Recent Sessions side panel — visible from lg (1024px) up. */}
         <motion.aside
           variants={sectionVariants}
-          className="hidden xl:flex flex-col bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 min-h-0"
+          aria-label="Recent sessions"
+          className="hidden lg:flex flex-col bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 min-h-0"
         >
           <div className="flex items-center justify-between mb-3 shrink-0">
             <div className="flex items-center gap-3">
@@ -661,7 +828,10 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-2">
+          <div
+            className="flex-1 min-h-0 overflow-auto flex flex-col gap-2"
+            aria-busy={avatarsLoading}
+          >
             {recentSessions.map((s) => {
               const positive = s.winner.net >= 0;
               return (

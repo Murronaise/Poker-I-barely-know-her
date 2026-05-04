@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, ReactNode } from "react";
+import { useEffect, useId, useState, useRef, ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 type Props = {
@@ -29,15 +29,26 @@ export default function CollapsibleSection({
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const manuallyToggled = useRef(false);
+  const reactId = useId();
+  const bodyId = `collapsible-${reactId.replace(/:/g, "")}`;
 
-  // Auto-open/close based on viewport height; respects manual user toggle
+  // Auto-open/close based on viewport height; respects manual user toggle.
+  // Only collapses on touch / coarse-pointer devices so desktops with short
+  // browser windows don't lose content unexpectedly.
   useEffect(() => {
     if (collapseUnderHeight <= 0) return;
 
+    const isCoarsePointer = () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(pointer: coarse)").matches;
+
     const check = () => {
-      if (!manuallyToggled.current) {
-        setOpen(window.innerHeight >= collapseUnderHeight);
+      if (manuallyToggled.current) return;
+      if (!isCoarsePointer()) {
+        setOpen(true);
+        return;
       }
+      setOpen(window.innerHeight >= collapseUnderHeight);
     };
 
     check();
@@ -59,7 +70,9 @@ export default function CollapsibleSection({
       <button
         type="button"
         onClick={handleToggle}
-        className="w-full flex items-center justify-between gap-3 px-5 py-3 select-none hover:bg-white/[0.05] transition-colors rounded-2xl"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="w-full min-h-11 flex items-center justify-between gap-3 px-5 py-3 select-none hover:bg-white/[0.05] transition-colors rounded-2xl"
       >
         <div className="flex items-center gap-3 min-w-0">
           {icon}
@@ -71,12 +84,17 @@ export default function CollapsibleSection({
           {rightSlot}
           <ChevronDown
             size={18}
+            aria-hidden="true"
             className={`text-white/40 transition-transform ${open ? "rotate-180" : ""}`}
           />
+          <span className="sr-only">{open ? "Collapse" : "Expand"}</span>
         </div>
       </button>
       {open && (
-        <div className={`px-5 pb-5 pt-1 ${fill ? "flex-1 min-h-0 overflow-auto" : ""}`}>
+        <div
+          id={bodyId}
+          className={`px-5 pb-5 pt-1 ${fill ? "flex-1 min-h-0 overflow-auto" : ""}`}
+        >
           {children}
         </div>
       )}

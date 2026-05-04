@@ -26,6 +26,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -181,6 +182,25 @@ export default function ProfilePage({
     [],
   );
 
+  // Where y=0 sits inside the chart, expressed as a 0..1 offset top-down. Used
+  // to split the area + line gradients so segments above zero render green and
+  // segments below zero render red. For all-positive data the offset is 1
+  // (entire gradient is green); all-negative is 0 (entire gradient is red).
+  const profits = performanceData.length > 0 ? performanceData.map((d) => d.profit) : [0];
+  const dataMax = Math.max(...profits);
+  const dataMin = Math.min(...profits);
+  const fillTop = Math.max(dataMax, 0);
+  const fillBottom = Math.min(dataMin, 0);
+  const fillRange = fillTop - fillBottom;
+  const fillZeroOffset = fillRange > 0 ? fillTop / fillRange : 1;
+  const strokeRange = dataMax - dataMin;
+  const strokeZeroOffset =
+    strokeRange > 0
+      ? Math.max(0, Math.min(1, dataMax / strokeRange))
+      : dataMax >= 0
+        ? 1
+        : 0;
+
   let streakCount = 0;
   let streakWin = true;
   for (const s of playerSessions) {
@@ -194,6 +214,11 @@ export default function ProfilePage({
     }
   }
 
+  // H2H comparison must use the *same* net definition on both sides — the
+  // player's `session.net` is `cashOut - buyIn` (food is settled separately
+  // by the food-payer), so the opponent's net needs to drop the food term too.
+  // Otherwise an opponent who paid for food looks worse than they really were
+  // and the W/L tally is biased.
   const h2h: Record<string, { wins: number; losses: number; draws: number }> = {};
   playerSessions.forEach((session) => {
     const fullGame = historicalGames.find((g) => g.id === session.id);
@@ -201,7 +226,7 @@ export default function ProfilePage({
     fullGame.players
       .filter((p) => p.name.toLowerCase() !== playerName.toLowerCase())
       .forEach((opp) => {
-        const oppNet = opp.cashOut - opp.buyIn - opp.food;
+        const oppNet = opp.cashOut - opp.buyIn;
         if (!h2h[opp.name]) h2h[opp.name] = { wins: 0, losses: 0, draws: 0 };
         if (session.net > oppNet) h2h[opp.name].wins++;
         else if (session.net < oppNet) h2h[opp.name].losses++;
@@ -230,7 +255,21 @@ export default function ProfilePage({
 
         {/* Profile Header */}
         <div className="flex flex-col md:flex-row gap-5 items-start md:items-center">
-          <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
+          <div
+            className="relative group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-full"
+            role="button"
+            tabIndex={0}
+            aria-haspopup="menu"
+            aria-expanded={showAvatarMenu}
+            aria-label={avatarUrl ? "Change or reframe profile picture" : "Upload profile picture"}
+            onClick={handleAvatarClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleAvatarClick();
+              }
+            }}
+          >
             <input
               type="file"
               ref={fileInputRef}
@@ -252,13 +291,6 @@ export default function ProfilePage({
                 size={128}
                 className="w-full h-full"
               />
-            </div>
-            {/* Always-visible edit badge — sits in the bottom-right of the
-                avatar so it's discoverable on both desktop and mobile (no
-                hover required). Clicking the avatar (or the badge) toggles
-                the same menu. */}
-            <div className="absolute bottom-0 right-0 w-9 h-9 md:w-10 md:h-10 rounded-full bg-[#39FF14] text-black flex items-center justify-center border-2 border-[#0E1117] shadow-[0_0_15px_rgba(57,255,20,0.5)] group-hover:scale-110 transition-transform pointer-events-none">
-              <Camera size={16} />
             </div>
             <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <Camera className="text-white mb-1" size={20} />
@@ -305,9 +337,9 @@ export default function ProfilePage({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); handleAvatarClick(); }}
-              className="mt-3 inline-flex items-center gap-2 text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
+              className="mt-3 inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
             >
-              <Camera size={12} /> {avatarUrl ? "Change Picture" : "Upload Picture"}
+              <Camera size={14} aria-hidden="true" /> {avatarUrl ? "Change Picture" : "Upload Picture"}
             </button>
           </div>
 
@@ -356,20 +388,43 @@ export default function ProfilePage({
           </div>
         )}
 
-        {/* Lifetime Performance Chart — collapsible */}
+        {/* Lifetime Performance Chart — collapsible. Stroke + fill flip red
+            when the player's cumulative net is below £0 so the colour matches
+            the financial reality (green-on-loss was misleading). */}
         <CollapsibleSection
           title="Lifetime Performance"
           collapseUnderHeight={900}
-          icon={<TrendingUp className="text-[#39FF14]" size={18} />}
+          icon={
+            <TrendingUp
+              className={totalNet < 0 ? "text-red-400" : "text-[#39FF14]"}
+              size={18}
+            />
+          }
         >
           <div className="h-[260px]">
             {isMounted ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={performanceData}>
+                <AreaChart
+                  data={performanceData}
+                  margin={{ top: 12, right: 16, bottom: 0, left: 0 }}
+                >
                   <defs>
-                    <linearGradient id="colorProfitLine" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#39FF14" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#39FF14" stopOpacity={0} />
+                    {/* Fill gradient: green above the zero crossing, red
+                        below. Each side fades to transparent toward the zero
+                        line so the band closest to £0 stays subtle. */}
+                    <linearGradient id="splitProfitFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset={0} stopColor="#39FF14" stopOpacity={0.4} />
+                      <stop offset={fillZeroOffset} stopColor="#39FF14" stopOpacity={0} />
+                      <stop offset={fillZeroOffset} stopColor="#ef4444" stopOpacity={0} />
+                      <stop offset={1} stopColor="#ef4444" stopOpacity={0.4} />
+                    </linearGradient>
+                    {/* Stroke gradient: hard switch from green to red exactly
+                        at the zero crossing so the line itself shows the sign. */}
+                    <linearGradient id="splitProfitStroke" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset={0} stopColor="#39FF14" />
+                      <stop offset={strokeZeroOffset} stopColor="#39FF14" />
+                      <stop offset={strokeZeroOffset} stopColor="#ef4444" />
+                      <stop offset={1} stopColor="#ef4444" />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
@@ -380,35 +435,75 @@ export default function ProfilePage({
                     axisLine={false}
                     tickLine={false}
                     dy={10}
+                    // Show only the first and last session date so the axis
+                    // stays clean regardless of how many sessions a player has
+                    // (matches Jake's 2-session look for everyone).
+                    ticks={
+                      performanceData.length > 1
+                        ? [
+                            performanceData[0].date,
+                            performanceData[performanceData.length - 1].date,
+                          ]
+                        : undefined
+                    }
+                    interval={0}
                   />
                   <YAxis
                     stroke="#ffffff40"
                     tick={{ fill: "#ffffff80", fontSize: 14 }}
-                    tickFormatter={(val) => (val < 0 ? `-£${Math.abs(val)}` : `£${val}`)}
+                    tickFormatter={(val) =>
+                      val < 0 ? `−£${Math.abs(val)}` : `£${val}`
+                    }
                     axisLine={false}
                     tickLine={false}
                     dx={-10}
+                    // Pad the domain by ~10% of the range so the line never
+                    // hugs the chart edges; for all-negative data this also
+                    // pulls £0 down off the very top so the line breathes.
+                    domain={[
+                      (dataMin: number) =>
+                        Math.floor(Math.min(dataMin, 0) - Math.max(Math.abs(dataMin) * 0.1, 5)),
+                      (dataMax: number) =>
+                        Math.ceil(Math.max(dataMax, 0) + Math.max(Math.abs(dataMax) * 0.1, 5)),
+                    ]}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "rgba(14,17,23,0.9)",
-                      border: "1px solid rgba(255,255,255,0.1)",
+                      backgroundColor: "rgba(14,17,23,0.95)",
+                      border: "1px solid rgba(255,255,255,0.15)",
                       borderRadius: "12px",
                       backdropFilter: "blur(8px)",
+                      color: "#FAFAFA",
                     }}
-                    itemStyle={{ color: "#39FF14", fontWeight: 600 }}
+                    labelStyle={{ color: "#FAFAFA", fontWeight: 700 }}
                     formatter={(value) => {
                       const n = Number(value);
-                      return [n < 0 ? `-£${Math.abs(n)}` : `£${n}`, "Profit"];
+                      const sign = n < 0 ? "−" : "+";
+                      const label = n < 0 ? "Cumulative Loss" : "Cumulative Profit";
+                      return [
+                        <span
+                          key="v"
+                          style={{ color: n < 0 ? "#fca5a5" : "#39FF14", fontWeight: 700 }}
+                        >
+                          {sign}£{Math.abs(n).toFixed(2)}
+                        </span>,
+                        label,
+                      ];
                     }}
+                  />
+                  {/* Anchor zero so the eye can read profit vs loss at a glance. */}
+                  <ReferenceLine
+                    y={0}
+                    stroke="rgba(255,255,255,0.25)"
+                    strokeDasharray="2 4"
                   />
                   <Area
                     type="monotone"
                     dataKey="profit"
-                    stroke="#39FF14"
+                    stroke="url(#splitProfitStroke)"
                     strokeWidth={3}
                     fillOpacity={1}
-                    fill="url(#colorProfitLine)"
+                    fill="url(#splitProfitFill)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -533,10 +628,15 @@ export default function ProfilePage({
         )}
       </div>
 
-      {/* Avatar Positioner Modal */}
+      {/* Avatar Positioner Modal — sizing is responsive so the positioner
+          circle never overflows on phones (was hard-coded 220px inside a
+          24px-padded modal => clipped on 375px). */}
       {showPositioner && avatarUrl && (
         <div
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Frame profile picture"
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6"
           onClick={() => {
             setShowPositioner(false);
             setPosBump((b) => b + 1);
@@ -544,21 +644,33 @@ export default function ProfilePage({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#0E1117] border border-white/10 rounded-3xl p-6 max-w-sm w-full relative"
+            className="bg-[#0E1117] border border-white/10 rounded-3xl p-4 sm:p-6 w-full max-w-[min(92vw,22rem)] relative"
           >
             <button
               onClick={() => {
                 setShowPositioner(false);
                 setPosBump((b) => b + 1);
               }}
-              className="absolute top-4 right-4 text-white/50 hover:text-white"
-              aria-label="Close"
+              className="absolute top-2 right-2 inline-flex items-center justify-center w-11 h-11 text-white/50 hover:text-white"
+              aria-label="Close frame picture dialog"
             >
               <X size={20} />
             </button>
-            <h3 className="text-xl font-black tracking-tight uppercase mb-1">Frame Picture</h3>
-            <p className="text-sm text-white/50 mb-5">Drag to pan · scroll or slide to zoom · saves automatically.</p>
-            <AvatarPositioner name={playerName} avatarUrl={avatarUrl} size={220} />
+            <h3 className="text-xl font-black tracking-tight uppercase mb-1 pr-10">
+              Frame Picture
+            </h3>
+            <p className="text-sm text-white/50 mb-5">
+              Drag to pan · scroll or slide to zoom · saves automatically.
+            </p>
+            <div className="flex justify-center">
+              {/* Cap at min(viewport-padding, design max). On a 360px phone
+                  this lands around 240px; on desktop it stays at 220px. */}
+              <AvatarPositioner
+                name={playerName}
+                avatarUrl={avatarUrl}
+                size={Math.min(220, typeof window !== "undefined" ? window.innerWidth - 96 : 220)}
+              />
+            </div>
           </div>
         </div>
       )}

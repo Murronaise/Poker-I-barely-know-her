@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +20,7 @@ import PlayerAvatar from "@/components/PlayerAvatar";
 import { toast } from "sonner";
 import { getVenue, setVenue, DEFAULT_VENUE } from "@/lib/local-store";
 import { historicalGames } from "@/lib/historical-games";
+import { supabase } from "@/lib/supabase";
 
 // Derive the picker's roster + win-rate / last-session badges from real
 // session history. Stays in sync if new games land in historical-games.ts.
@@ -62,6 +63,32 @@ const buyInPresets = [0, 20, 50, 100];
 export default function CreateGamePage() {
   const router = useRouter();
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
+
+  // Pull avatar URLs once on mount so the player picker shows real photos
+  // instead of the initials fallback. Failures (missing env / offline) silently
+  // leave the placeholder in place.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("players")
+          .select("name, avatar_url");
+        if (cancelled || !data) return;
+        const map: Record<string, string> = {};
+        data.forEach((p: { name: string; avatar_url?: string | null }) => {
+          if (p.avatar_url) map[p.name] = p.avatar_url;
+        });
+        setAvatarMap(map);
+      } catch {
+        // ignore — fallback avatars are fine
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [smallBlind, setSmallBlind] = useState<number>(0.10);
   const [bigBlind, setBigBlind] = useState<number>(0.20);
   const [blindTimer, setBlindTimer] = useState<number>(15);
@@ -189,6 +216,7 @@ export default function CreateGamePage() {
                 >
                   <PlayerAvatar
                     name={player}
+                    avatarUrl={avatarMap[player]}
                     size={44}
                     isSelected={isSelected}
                     className="rounded-full border border-white/10"

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
-import { useSessionItem } from "@/lib/use-hydration";
+import { setSessionItem, useSessionItem } from "@/lib/use-hydration";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -24,9 +24,11 @@ export default function NavBar() {
     return match && match[1] !== "create" ? match[1] : null;
   })();
 
-  // Persist the live game id whenever we land on a live game URL.
+  // Persist the live game id whenever we land on a live game URL. Going
+  // through `setSessionItem` notifies any same-tab `useSessionItem` subscribers
+  // so the dashboard's "Resume Live Session" CTA appears immediately.
   useEffect(() => {
-    if (liveGameIdInUrl) sessionStorage.setItem("liveGameId", liveGameIdInUrl);
+    if (liveGameIdInUrl) setSessionItem("liveGameId", liveGameIdInUrl);
   }, [liveGameIdInUrl]);
 
   const storedFromSession = useSessionItem("liveGameId");
@@ -71,25 +73,33 @@ export default function NavBar() {
           )}
 
           <div className="hidden md:flex gap-6 text-base font-semibold text-white/70">
-            {links.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`transition-colors ${
-                  isActive(l.href) ? "text-[#39FF14]" : "hover:text-[#39FF14]"
-                }`}
-              >
-                {l.label}
-              </Link>
-            ))}
+            {links.map((l) => {
+              const active = isActive(l.href);
+              return (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`relative transition-colors py-1 ${
+                    active
+                      ? "text-[#39FF14] after:absolute after:left-0 after:right-0 after:-bottom-0.5 after:h-[2px] after:bg-[#39FF14] after:rounded-full"
+                      : "hover:text-[#39FF14]"
+                  }`}
+                >
+                  {l.label}
+                </Link>
+              );
+            })}
           </div>
 
           <button
-            className="md:hidden text-white/70 hover:text-[#39FF14] transition-colors p-1"
+            className="md:hidden text-white/70 hover:text-[#39FF14] transition-colors inline-flex items-center justify-center w-11 h-11 -mr-2"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle mobile menu"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav"
           >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            {mobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
           </button>
         </div>
       </div>
@@ -97,24 +107,31 @@ export default function NavBar() {
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
+            id="mobile-nav"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden overflow-hidden flex flex-col gap-4 mt-3"
+            className="md:hidden overflow-hidden flex flex-col gap-1 mt-3"
           >
-            <div className="pt-4 pb-2 border-t border-white/10 flex flex-col gap-4">
-              {links.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`text-base font-bold tracking-widest uppercase transition-colors ${
-                    isActive(l.href) ? "text-[#39FF14]" : "text-white/70 hover:text-white"
-                  }`}
-                >
-                  {l.label}
-                </Link>
-              ))}
+            <div className="pt-3 pb-1 border-t border-white/10 flex flex-col gap-1">
+              {links.map((l) => {
+                const active = isActive(l.href);
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    className={`min-h-11 flex items-center text-base font-bold tracking-widest uppercase rounded-md px-2 -mx-2 transition-colors ${
+                      active
+                        ? "text-[#39FF14] bg-[#39FF14]/5"
+                        : "text-white/70 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    {l.label}
+                  </Link>
+                );
+              })}
             </div>
           </motion.div>
         )}
