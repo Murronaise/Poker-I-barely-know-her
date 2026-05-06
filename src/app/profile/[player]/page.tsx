@@ -7,7 +7,6 @@ import {
   TrendingUp,
   Target,
   Clock,
-  Shield,
   Camera,
   Calendar,
   CircleDollarSign,
@@ -36,6 +35,7 @@ import { supabase } from "@/lib/supabase";
 import { historicalGames } from "@/lib/historical-games";
 import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
+import { BadgeCheck } from "lucide-react";
 
 export default function ProfilePage({
   params,
@@ -63,6 +63,11 @@ export default function ProfilePage({
   const [posBump, setPosBump] = useState(0); // forces PlayerAvatar to re-read stored position
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Verified = a registered user owns this player_name. "(You)" = it's the
+  // logged-in viewer's own profile.
+  const [isVerified, setIsVerified] = useState(false);
+  const [isMine, setIsMine] = useState(false);
+
   // Fetch existing avatar on mount
   useEffect(() => {
     async function fetchAvatar() {
@@ -81,6 +86,24 @@ export default function ProfilePage({
       }
     }
     fetchAvatar();
+  }, [playerName]);
+
+  // Check if any registered user owns this player_name (case-insensitive),
+  // and whether the viewer themselves owns it.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const [{ data: matches }, { data: meResp }] = await Promise.all([
+        supabase.from("users").select("email, player_name").ilike("player_name", playerName),
+        supabase.auth.getUser(),
+      ]);
+      if (cancelled) return;
+      const ownerEmail = matches?.[0]?.email ?? null;
+      setIsVerified(Boolean(ownerEmail));
+      setIsMine(Boolean(ownerEmail && meResp.user?.email && ownerEmail.toLowerCase() === meResp.user.email.toLowerCase()));
+    };
+    check();
+    return () => { cancelled = true; };
   }, [playerName]);
 
   const handleAvatarClick = () => {
@@ -168,6 +191,7 @@ export default function ProfilePage({
   const totalNet = playerSessions.reduce((sum, s) => sum + s.net, 0);
   const winsCount = playerSessions.filter((s) => s.net >= 0).length;
   const winRatePct = playerSessions.length > 0 ? Math.round((winsCount / playerSessions.length) * 100) : 0;
+  const avgBuyIn = playerSessions.length > 0 ? playerSessions.reduce((sum, s) => sum + s.buyIn, 0) / playerSessions.length : 0;
   const formatNet = (n: number) =>
     `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
 
@@ -219,7 +243,7 @@ export default function ProfilePage({
   // by the food-payer), so the opponent's net needs to drop the food term too.
   // Otherwise an opponent who paid for food looks worse than they really were
   // and the W/L tally is biased.
-  const h2h: Record<string, { wins: number; losses: number; draws: number }> = {};
+  const h2h: Record<string, { wins: number; losses: number; draws: number; netVs: number }> = {};
   playerSessions.forEach((session) => {
     const fullGame = historicalGames.find((g) => g.id === session.id);
     if (!fullGame) return;
@@ -227,10 +251,11 @@ export default function ProfilePage({
       .filter((p) => p.name.toLowerCase() !== playerName.toLowerCase())
       .forEach((opp) => {
         const oppNet = opp.cashOut - opp.buyIn;
-        if (!h2h[opp.name]) h2h[opp.name] = { wins: 0, losses: 0, draws: 0 };
+        if (!h2h[opp.name]) h2h[opp.name] = { wins: 0, losses: 0, draws: 0, netVs: 0 };
         if (session.net > oppNet) h2h[opp.name].wins++;
         else if (session.net < oppNet) h2h[opp.name].losses++;
         else h2h[opp.name].draws++;
+        h2h[opp.name].netVs += session.net - oppNet;
       });
   });
   const h2hEntries = Object.entries(h2h)
@@ -254,9 +279,9 @@ export default function ProfilePage({
         </Link>
 
         {/* Profile Header */}
-        <div className="flex flex-col md:flex-row gap-5 items-start md:items-center">
+        <div className="flex flex-col md:flex-row gap-5 md:items-center">
           <div
-            className="relative group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-full"
+            className="relative group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-full shrink-0 mx-auto md:mx-0"
             role="button"
             tabIndex={0}
             aria-haspopup="menu"
@@ -326,10 +351,26 @@ export default function ProfilePage({
             )}
           </div>
 
-          <div className="flex-1">
-            <h1 className="text-2xl md:text-4xl font-black tracking-tight leading-none">
-              {playerName}
-            </h1>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl md:text-4xl font-black tracking-tight leading-none">
+                {playerName}
+              </h1>
+              {isVerified && (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-black tracking-widest uppercase text-[#39FF14] bg-[#39FF14]/10 border border-[#39FF14]/30 rounded px-1.5 py-0.5"
+                  title="Linked to a registered account"
+                >
+                  <BadgeCheck size={10} />
+                  Verified
+                </span>
+              )}
+              {isMine && (
+                <span className="inline-flex items-center text-[10px] font-black tracking-widest uppercase text-cyan-400 bg-cyan-400/10 border border-cyan-400/30 rounded px-1.5 py-0.5">
+                  You
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-white/50 text-base mt-2 font-semibold">
               <Calendar size={13} className="text-[#39FF14]/70" />
               <span>{playerSessions.length} sessions tracked</span>
@@ -351,7 +392,7 @@ export default function ProfilePage({
             { icon: TrendingUp, label: "Net Profit", value: formatNet(totalNet), color: totalNet >= 0 ? "text-[#39FF14]" : "text-red-400" },
             { icon: Target, label: "Win Rate", value: `${winRatePct}%`, color: "text-cyan-400" },
             { icon: Clock, label: "Sessions", value: String(playerSessions.length), color: "text-yellow-400" },
-            { icon: Shield, label: "VPIP", value: "—", color: "text-emerald-400" },
+            { icon: CircleDollarSign, label: "Avg Buy-In", value: `£${avgBuyIn.toFixed(2)}`, color: "text-emerald-400" },
           ].map((m) => (
             <div
               key={m.label}
@@ -615,9 +656,12 @@ export default function ProfilePage({
                         <span className="text-red-400 font-bold">{record.losses}L</span>
                         {record.draws > 0 && <span className="text-white/30 font-bold"> · {record.draws}D</span>}
                       </p>
+                      <p className={`text-xs font-bold tabular-nums mt-1 ${record.netVs >= 0 ? "text-[#39FF14]/80" : "text-red-400/80"}`}>
+                        you're {record.netVs >= 0 ? "+" : ""}£{record.netVs.toFixed(2)}
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className={`text-xl font-black tabular-nums ${isAhead ? "text-[#39FF14]" : "text-red-400"}`}>{winPct}%</p>
+                      <p className={`text-lg font-black tabular-nums ${isAhead ? "text-[#39FF14]" : "text-red-400"}`}>{winPct}%</p>
                       <p className="text-xs text-white/30 uppercase tracking-widest font-bold">win rate</p>
                     </div>
                   </Link>

@@ -18,7 +18,7 @@ import {
 import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { toast } from "sonner";
-import { getVenue, setVenue, DEFAULT_VENUE } from "@/lib/local-store";
+import { getVenue, setVenue, DEFAULT_VENUE, getBlindTemplates, saveBlindTemplate, deleteBlindTemplate, type BlindTemplate } from "@/lib/local-store";
 import { historicalGames } from "@/lib/historical-games";
 import { supabase } from "@/lib/supabase";
 
@@ -100,6 +100,12 @@ export default function CreateGamePage() {
   const [venue, setVenueState] = useState<string>(() =>
     typeof window === "undefined" ? DEFAULT_VENUE : getVenue(),
   );
+  const [templates, setTemplates] = useState<BlindTemplate[]>([]);
+
+  // Load blind templates on mount
+  useEffect(() => {
+    setTemplates(getBlindTemplates());
+  }, []);
 
   const togglePlayer = (player: string) => {
     setSelectedPlayers((prev) =>
@@ -311,6 +317,67 @@ export default function CreateGamePage() {
               );
             })}
           </div>
+
+          {/* Save Template Button */}
+          <div className="mt-4 pt-3 border-t border-white/10">
+            <button
+              type="button"
+              onClick={() => {
+                const templateName = `£${smallBlind.toFixed(2)} / £${bigBlind.toFixed(2)} · ${blindTimer}m`;
+                saveBlindTemplate({ name: templateName, sb: smallBlind, bb: bigBlind, timerMinutes: blindTimer });
+                setTemplates(getBlindTemplates());
+                toast.success(`Saved blind template: ${templateName}`);
+              }}
+              className="text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-lg bg-[#39FF14]/10 hover:bg-[#39FF14]/20 border border-[#39FF14]/30 text-[#39FF14] transition-colors"
+            >
+              Save as Template
+            </button>
+          </div>
+
+          {/* Saved Templates */}
+          {templates.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-white/10">
+              <p className="text-xs font-bold text-white/40 uppercase mb-2 tracking-widest">Saved Templates</p>
+              <div className="flex flex-wrap gap-1.5">
+                {templates.map((t) => {
+                  const active = smallBlind === t.sb && bigBlind === t.bb && blindTimer === t.timerMinutes;
+                  return (
+                    <div
+                      key={t.name}
+                      className={`flex items-center gap-1 text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded-lg border transition-colors ${
+                        active
+                          ? "bg-purple-400/15 border-purple-400/60 text-purple-300"
+                          : "bg-black/30 border-white/10 text-white/60"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          applyBlindPreset(t.sb, t.bb);
+                          setBlindTimer(t.timerMinutes);
+                        }}
+                        className="hover:text-purple-300 transition-colors"
+                      >
+                        {t.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          deleteBlindTemplate(t.name);
+                          setTemplates(getBlindTemplates());
+                          toast.success(`Deleted template: ${t.name}`);
+                        }}
+                        className="ml-1 text-red-400/60 hover:text-red-400 transition-colors"
+                        title="Delete template"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">

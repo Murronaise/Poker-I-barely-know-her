@@ -13,27 +13,74 @@ import {
   ChevronRight,
   Crown,
   Search,
+  Lock,
+  Vote,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { historicalGames } from "@/lib/historical-games";
-import { useState } from "react";
+import { getEffectiveHistoricalGames } from "@/lib/game-store";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { isAdmin } from "@/lib/auth";
+import { useState, useEffect, useMemo } from "react";
 
 export default function GamesIndexPage() {
-  const summary = [
-    { label: "Total Sessions", value: String(historicalGames.length), icon: Activity, color: "text-[#39FF14]" },
+  const [games, setGames] = useState(historicalGames);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const supabase = createSupabaseBrowserClient();
+
+  // Load effective games (with localStorage deletes/patches) on mount.
+  useEffect(() => {
+    setGames(getEffectiveHistoricalGames());
+  }, []);
+
+  // Check if user is admin — fast email allow-list first, then DB lookup so
+  // users promoted via the `users.is_admin` column also see the admin UI.
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveAdmin = async (email?: string | null) => {
+      if (!email) {
+        if (!cancelled) setIsAdminUser(false);
+        return;
+      }
+      if (isAdmin(email)) {
+        if (!cancelled) setIsAdminUser(true);
+        return;
+      }
+      const { data } = await supabase
+        .from("users")
+        .select("is_admin")
+        .eq("email", email)
+        .maybeSingle();
+      if (!cancelled) setIsAdminUser(data?.is_admin === true);
+    };
+
+    supabase.auth.getUser().then(({ data }) => resolveAdmin(data.user?.email));
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => resolveAdmin(session?.user?.email),
+    );
+
+    return () => {
+      cancelled = true;
+      authListener?.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const summary = useMemo(() => [
+    { label: "Total Sessions", value: String(games.length), icon: Activity, color: "text-[#39FF14]" },
     {
       label: "Lifetime Pot",
-      value: `£${historicalGames.reduce((sum, g) => sum + g.totalPot, 0).toLocaleString()}`,
+      value: `£${games.reduce((sum, g) => sum + g.totalPot, 0).toLocaleString()}`,
       icon: Coins,
       color: "text-cyan-400",
     },
     { label: "Avg Duration", value: "2h 45m", icon: Clock, color: "text-yellow-400" },
     { label: "Most Active Day", value: "Friday", icon: Calendar, color: "text-purple-400" },
-  ];
+  ], [games]);
 
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const filteredGames = historicalGames.filter(game => {
+  const filteredGames = useMemo(() => games.filter(game => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     const winner = [...game.players]
@@ -44,7 +91,7 @@ export default function GamesIndexPage() {
     if (winner.name.toLowerCase().includes(q)) return true;
     if (game.players.some(p => p.name.toLowerCase().includes(q))) return true;
     return false;
-  });
+  }), [games, searchQuery]);
 
   return (
     <motion.main
@@ -66,17 +113,40 @@ export default function GamesIndexPage() {
           </div>
         </div>
 
-        <Link href="/games/create" className="w-full md:w-auto">
-          <button className="w-full relative group overflow-hidden rounded-xl p-[1px]">
-            <span className="absolute inset-0 bg-gradient-to-r from-[#39FF14] to-cyan-400 rounded-xl opacity-70 group-hover:opacity-100 transition-opacity blur-sm"></span>
-            <div className="relative bg-black/50 backdrop-blur-xl px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 border border-white/10 group-hover:border-[#39FF14]/50 transition-colors">
-              <Plus className="text-[#39FF14]" size={18} />
-              <span className="font-bold text-base tracking-wide text-white group-hover:text-[#39FF14] transition-colors uppercase">
-                Start New Game
-              </span>
+        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <Link
+            href="/games/poll"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 font-bold text-base tracking-wide uppercase transition-colors"
+          >
+            <Vote size={18} />
+            Polls
+          </Link>
+
+          {isAdminUser ? (
+            <Link href="/games/create" className="w-full sm:w-auto">
+              <button className="w-full relative group overflow-hidden rounded-xl p-[1px]">
+                <span className="absolute inset-0 bg-gradient-to-r from-[#39FF14] to-cyan-400 rounded-xl opacity-70 group-hover:opacity-100 transition-opacity blur-sm"></span>
+                <div className="relative bg-black/50 backdrop-blur-xl px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 border border-white/10 group-hover:border-[#39FF14]/50 transition-colors">
+                  <Plus className="text-[#39FF14]" size={18} />
+                  <span className="font-bold text-base tracking-wide text-white group-hover:text-[#39FF14] transition-colors uppercase">
+                    Start New Game
+                  </span>
+                </div>
+              </button>
+            </Link>
+          ) : (
+            <div className="w-full sm:w-auto group" title="Admin access required to start games">
+              <button disabled className="w-full relative overflow-hidden rounded-xl p-[1px] opacity-50 cursor-not-allowed">
+                <div className="relative bg-black/50 backdrop-blur-xl px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 border border-white/10">
+                  <Lock className="text-white/40" size={18} />
+                  <span className="font-bold text-base tracking-wide text-white/40 uppercase">
+                    Start New Game
+                  </span>
+                </div>
+              </button>
             </div>
-          </button>
-        </Link>
+          )}
+        </div>
       </div>
 
       {/* Summary Stats */}

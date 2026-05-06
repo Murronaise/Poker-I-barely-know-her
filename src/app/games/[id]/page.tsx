@@ -24,6 +24,7 @@ import {
   Users,
 } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { clearLiveGameId } from "@/lib/live-game-store";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -384,9 +385,7 @@ function ActiveGameContent() {
     }
 
     setShowResults(true);
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("liveGameId");
-    }
+    clearLiveGameId();
   };
 
   const fillPct = Math.max(0, Math.min(100, (timeLeft / (maxTime || 1)) * 100));
@@ -630,12 +629,7 @@ function ActiveGameContent() {
             >
               Back to Table
             </button>
-            <Link
-              href="/"
-              onClick={() => {
-                if (typeof window !== "undefined") sessionStorage.removeItem("liveGameId");
-              }}
-            >
+            <Link href="/" onClick={() => clearLiveGameId()}>
               <button className="px-6 py-3 bg-[#39FF14]/10 border border-[#39FF14]/40 text-[#39FF14] hover:bg-[#39FF14]/20 transition-colors rounded-xl font-black tracking-widest uppercase shadow-xl text-base">
                 Return to Dashboard
               </button>
@@ -904,17 +898,17 @@ function ActiveGameContent() {
           <motion.div
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
-            className="bg-[#0E1117] border border-white/10 rounded-3xl max-w-sm w-full p-6 md:p-7 relative shadow-[0_0_50px_rgba(0,0,0,0.5)]"
+            className="bg-[#0E1117] border border-white/10 rounded-3xl max-w-sm w-full p-6 md:p-7 relative shadow-[0_0_50px_rgba(0,0,0,0.5)] max-h-[90vh] overflow-y-auto"
           >
             <button
               onClick={() => setShowConfig(false)}
-              className="absolute top-5 right-5 text-white/50 hover:text-white"
+              className="absolute top-5 right-5 text-white/50 hover:text-white inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-white/5 transition-colors"
               aria-label="Close"
             >
               <X size={22} />
             </button>
 
-            <h2 className="text-2xl font-black tracking-tight mb-1 uppercase">Advance Level</h2>
+            <h2 className="text-2xl font-black tracking-tight mb-1 uppercase pr-10">Advance Level</h2>
             <p className="text-white/50 mb-1 text-base">Pre-filled at 2× current blinds.</p>
             <p className="text-xs text-white/30 font-mono uppercase tracking-widest mb-5">
               currently £{smallBlind.toFixed(2)} / £{bigBlind.toFixed(2)} · level {blindLevel}
@@ -983,16 +977,16 @@ function ActiveGameContent() {
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#0E1117] border border-white/10 rounded-3xl max-w-sm w-full p-6 md:p-7 relative"
+            className="bg-[#0E1117] border border-white/10 rounded-3xl max-w-sm w-full p-6 md:p-7 relative max-h-[90vh] overflow-y-auto"
           >
             <button
               onClick={() => setShowHelp(false)}
-              className="absolute top-5 right-5 text-white/50 hover:text-white"
+              className="absolute top-5 right-5 text-white/50 hover:text-white inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-white/5 transition-colors"
               aria-label="Close"
             >
               <X size={22} />
             </button>
-            <h2 className="text-xl font-black tracking-tight mb-5 uppercase flex items-center gap-3">
+            <h2 className="text-xl font-black tracking-tight mb-5 uppercase flex items-center gap-3 pr-10">
               <Keyboard size={20} className="text-[#39FF14]" /> Shortcuts
             </h2>
             <ul className="space-y-2.5 text-base">

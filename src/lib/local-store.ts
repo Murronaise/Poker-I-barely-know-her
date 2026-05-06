@@ -97,3 +97,151 @@ export function setVenue(venue: string) {
     // ignore
   }
 }
+
+// Per-player settlement tracking. The previous boolean per-game flag has
+// been replaced by a per-player record so admins can tick off settlements
+// one debtor at a time. A game is considered "fully settled" when every
+// player who owed money has been ticked.
+//
+// Schema: { [gameId]: string[] }  — array of lower-cased player names that
+// have paid up for that game.
+const SETTLED_PLAYERS_KEY = "pt:settledPlayers";
+
+// Legacy key kept around so games marked settled before this change still
+// show as settled. Read-only — we don't write to it any more.
+const LEGACY_SETTLED_GAMES_KEY = "pt:settledGames";
+
+type SettledPlayersMap = Record<string, string[]>;
+
+function readSettledMap(): SettledPlayersMap {
+  return readJSON<SettledPlayersMap>(SETTLED_PLAYERS_KEY, {});
+}
+
+function writeSettledMap(map: SettledPlayersMap): void {
+  writeJSON(SETTLED_PLAYERS_KEY, map);
+}
+
+/** Lower-cased player names that have paid up for this game. */
+export function getSettledPlayersForGame(gameId: string): Set<string> {
+  return new Set(readSettledMap()[gameId] ?? []);
+}
+
+export function isPlayerSettled(gameId: string, playerName: string): boolean {
+  return getSettledPlayersForGame(gameId).has(playerName.toLowerCase());
+}
+
+/** Toggle a single player's settled status; returns the new boolean. */
+export function togglePlayerSettled(gameId: string, playerName: string): boolean {
+  const map = readSettledMap();
+  const list = new Set(map[gameId] ?? []);
+  const key = playerName.toLowerCase();
+  let nextSettled: boolean;
+  if (list.has(key)) {
+    list.delete(key);
+    nextSettled = false;
+  } else {
+    list.add(key);
+    nextSettled = true;
+  }
+  map[gameId] = [...list];
+  writeSettledMap(map);
+  return nextSettled;
+}
+
+/**
+ * A game is settled when every player in `requiredPayers` has been ticked
+ * off. Pass the list of player names who actually owed money for the game
+ * — the caller computes this from the settlement breakdown.
+ *
+ * Falls back to the legacy "marked settled" flag so games settled before
+ * the per-player change keep their state.
+ */
+export function isGameSettled(gameId: string, requiredPayers?: string[]): boolean {
+  // Honour the legacy whole-game flag.
+  const legacy = readJSON<string[]>(LEGACY_SETTLED_GAMES_KEY, []);
+  if (legacy.includes(gameId)) return true;
+
+  if (!requiredPayers || requiredPayers.length === 0) return false;
+  const settled = getSettledPlayersForGame(gameId);
+  return requiredPayers.every((p) => settled.has(p.toLowerCase()));
+}
+
+/**
+ * Reset every settlement record for a game — both the per-player ticks AND
+ * the legacy whole-game flag. Used by the admin "Reset" button when a game
+ * was accidentally marked settled and needs to be re-opened.
+ */
+export function clearGameSettlement(gameId: string): void {
+  // Per-player map.
+  const map = readSettledMap();
+  if (map[gameId]) {
+    delete map[gameId];
+    writeSettledMap(map);
+  }
+  // Legacy whole-game list.
+  const legacy = readJSON<string[]>(LEGACY_SETTLED_GAMES_KEY, []);
+  if (legacy.includes(gameId)) {
+    writeJSON(LEGACY_SETTLED_GAMES_KEY, legacy.filter((id) => id !== gameId));
+  }
+}
+
+// Game delete/patch overlay for localStorage — allows editing hardcoded games
+const DELETED_GAME_IDS_KEY = "pt:deletedGameIds";
+const GAME_PATCHES_KEY = "pt:gamePatches";
+
+export function getDeletedGameIds(): Set<string> {
+  return new Set(readJSON<string[]>(DELETED_GAME_IDS_KEY, []));
+}
+
+export function deleteGame(id: string): void {
+  const existing = readJSON<string[]>(DELETED_GAME_IDS_KEY, []);
+  if (!existing.includes(id)) {
+    writeJSON(DELETED_GAME_IDS_KEY, [...existing, id]);
+  }
+}
+
+export function undeleteGame(id: string): void {
+  const existing = readJSON<string[]>(DELETED_GAME_IDS_KEY, []);
+  writeJSON(DELETED_GAME_IDS_KEY, existing.filter(gid => gid !== id));
+}
+
+export function getGamePatches(): Record<string, Record<string, unknown>> {
+  return readJSON<Record<string, Record<string, unknown>>>(GAME_PATCHES_KEY, {});
+}
+
+export function getGamePatch(id: string): Record<string, unknown> | null {
+  const patches = getGamePatches();
+  return patches[id] ?? null;
+}
+
+export function patchGame(id: string, patch: Record<string, unknown>): void {
+  const patches = getGamePatches();
+  patches[id] = { ...(patches[id] ?? {}), ...patch };
+  writeJSON(GAME_PATCHES_KEY, patches);
+}
+
+// Blind structure templates for quick reuse on the create game page
+export type BlindTemplate = {
+  name: string;
+  sb: number;
+  bb: number;
+  timerMinutes: number;
+};
+
+const BLIND_TEMPLATES_KEY = "pt:blindTemplates";
+
+export function getBlindTemplates(): BlindTemplate[] {
+  return readJSON<BlindTemplate[]>(BLIND_TEMPLATES_KEY, []);
+}
+
+export function saveBlindTemplate(template: BlindTemplate): void {
+  const existing = getBlindTemplates();
+  // Avoid duplicates by name (case-insensitive)
+  const deduped = existing.filter(t => t.name.toLowerCase() !== template.name.toLowerCase());
+  writeJSON(BLIND_TEMPLATES_KEY, [...deduped, template]);
+}
+
+export function deleteBlindTemplate(name: string): void {
+  const existing = getBlindTemplates();
+  writeJSON(BLIND_TEMPLATES_KEY, existing.filter(t => t.name.toLowerCase() !== name.toLowerCase()));
+}

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { useIsMounted, useSessionItem } from "@/lib/use-hydration";
+import { useIsMounted } from "@/lib/use-hydration";
+import { useLiveGameId } from "@/lib/live-game-store";
 import { useReducedMotion } from "framer-motion";
 import {
   BarChart,
@@ -37,6 +38,7 @@ import type { Variants } from "framer-motion";
 import Link from "next/link";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import Sparkline from "@/components/Sparkline";
+import PollBanner from "@/components/PollBanner";
 import { historicalGames } from "@/lib/historical-games";
 
 const pageVariants: Variants = {
@@ -278,7 +280,7 @@ export default function Dashboard() {
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
   const [avatarsLoading, setAvatarsLoading] = useState(true);
   const isMounted = useIsMounted();
-  const liveGameId = useSessionItem("liveGameId");
+  const liveGameId = useLiveGameId();
   const reduceMotion = useReducedMotion();
   const currentDate = useMemo(
     () =>
@@ -529,6 +531,11 @@ export default function Dashboard() {
           </div>
         </div>
       </motion.div>
+
+      {/* Poll banner — only renders when there's a relevant poll for this user */}
+      <div className="px-4 md:px-6 xl:px-12 shrink-0">
+        <PollBanner />
+      </div>
 
       {/* Headline stats */}
       <motion.div variants={sectionVariants} className="px-4 md:px-6 xl:px-12 shrink-0">

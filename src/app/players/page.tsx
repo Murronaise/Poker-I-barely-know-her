@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ArrowUpDown,
   X,
+  BadgeCheck,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -17,6 +18,8 @@ import { supabase } from "@/lib/supabase";
 import { useEffect, useMemo, useState } from "react";
 import { getStoredPlayers, removeStoredPlayer } from "@/lib/local-store";
 import { historicalGames } from "@/lib/historical-games";
+import { loadRegisteredPlayers, isRegistered, type RegisteredPlayerMap } from "@/lib/registered-players";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type PlayerRow = {
   name: string;
@@ -71,8 +74,6 @@ function computeSeedPlayers(): PlayerRow[] {
   });
 }
 
-const seedPlayers: PlayerRow[] = computeSeedPlayers();
-
 type SortKey = "name" | "profit" | "winRate" | "sessions";
 
 const sortOptions: { key: SortKey; label: string }[] = [
@@ -85,10 +86,10 @@ const sortOptions: { key: SortKey; label: string }[] = [
 const formatProfit = (p: number) =>
   p >= 0 ? `+£${p.toLocaleString()}` : `-£${Math.abs(p).toLocaleString()}`;
 
-function computeLocalPlayers(): { rows: PlayerRow[]; avatarMap: Record<string, string> } {
+function computeLocalPlayers(seed: PlayerRow[]): { rows: PlayerRow[]; avatarMap: Record<string, string> } {
   if (typeof window === "undefined") return { rows: [], avatarMap: {} };
   const stored = getStoredPlayers();
-  const seedNames = new Set(seedPlayers.map((p) => p.name.toLowerCase()));
+  const seedNames = new Set(seed.map((p) => p.name.toLowerCase()));
   const rows: PlayerRow[] = stored
     .filter((p) => !seedNames.has(p.name.toLowerCase()))
     .map((p) => ({
@@ -108,8 +109,14 @@ function computeLocalPlayers(): { rows: PlayerRow[]; avatarMap: Record<string, s
   return { rows, avatarMap };
 }
 
+// Computed once at module load — `historicalGames` is a static import so
+// these never change without a deploy.
+const seedPlayers: PlayerRow[] = computeSeedPlayers();
+
 export default function PlayersIndexPage() {
-  const [extraPlayers, setExtraPlayers] = useState<PlayerRow[]>(() => computeLocalPlayers().rows);
+  const initialLocal = useMemo(() => computeLocalPlayers(seedPlayers), []);
+  const [extraPlayers, setExtraPlayers] = useState<PlayerRow[]>(initialLocal.rows);
+  const [avatarMap, setAvatarMap] = useState<Record<string, string>>(initialLocal.avatarMap);
 
   // Remove a locally-stored player (Test/Another etc). Only available for
   // rows with isLocal === true; seed players from historical games can't be
@@ -124,12 +131,20 @@ export default function PlayersIndexPage() {
       return next;
     });
   };
-  const [avatarMap, setAvatarMap] = useState<Record<string, string>>(
-    () => computeLocalPlayers().avatarMap,
-  );
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [isLoading, setIsLoading] = useState(true);
+  const [registered, setRegistered] = useState<RegisteredPlayerMap>(new Map());
+
+  // Pull the registered (signed-up) player names so we can flag verified
+  // accounts on the roster.
+  useEffect(() => {
+    let cancelled = false;
+    loadRegisteredPlayers(createSupabaseBrowserClient()).then((map) => {
+      if (!cancelled) setRegistered(map);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Pull avatars from Supabase (best-effort) and merge with local ones
   useEffect(() => {
@@ -154,7 +169,7 @@ export default function PlayersIndexPage() {
     fetchAvatars();
   }, []);
 
-  const allPlayers = useMemo(() => [...seedPlayers, ...extraPlayers], [extraPlayers]);
+  const allPlayers = useMemo(() => [...seedPlayers, ...extraPlayers], [seedPlayers, extraPlayers]);
 
   const visiblePlayers = useMemo(() => {
     const filtered = allPlayers.filter((p) =>
@@ -308,9 +323,18 @@ export default function PlayersIndexPage() {
                       <div className="flex-1 min-w-0 flex flex-col gap-2">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <h3 className="text-lg font-bold text-white/90 group-hover:text-white transition-colors truncate">
-                              {player.name}
-                            </h3>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h3 className="text-lg font-bold text-white/90 group-hover:text-white transition-colors truncate">
+                                {player.name}
+                              </h3>
+                              {isRegistered(registered, player.name) && (
+                                <BadgeCheck
+                                  size={14}
+                                  className="text-[#39FF14] shrink-0"
+                                  aria-label="Verified — claimed by a registered account"
+                                />
+                              )}
+                            </div>
                             <p className="text-sm text-white/40 truncate">
                               {player.lastPlayed}
                             </p>

@@ -23,7 +23,7 @@ export default function CollapsibleSection({
   rightSlot,
   children,
   collapseUnderHeight = 0,
-  defaultOpen = true,
+  defaultOpen = false,
   fill = false,
   className = "",
 }: Props) {
