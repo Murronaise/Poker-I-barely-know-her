@@ -27,6 +27,35 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.6.1",
+    date: "May 7, 2026",
+    summary: "Mobile polish pass — readable winners, breathable layouts, fewer mystery buttons",
+    items: [
+      // ---- Dashboard --------------------------------------------------------
+      { category: "Dashboard", type: "improvement", text: "Removed the 'Dashboard' title and date strip — phones get more room for the cards below" },
+      { category: "Dashboard", type: "improvement", text: "Top stat cards line up at the same height again — long labels like 'Total Volume' no longer wrap and stretch one card" },
+      { category: "Dashboard", type: "improvement", text: "Marquee row of player superlatives now auto-scrolls on phones too; pause-on-touch lets you swipe through it" },
+      { category: "Dashboard", type: "improvement", text: "Recent panel is back on mobile — stacks below the lifetime profit chart with a scroll inside" },
+      { category: "Dashboard", type: "improvement", text: "Lifetime profit chart pans horizontally on phones so all eight player names stay readable" },
+      { category: "Dashboard", type: "fix", text: "Recent winner now leads with the cash-out figure (e.g. £81.50) and shows the profit underneath — was easy to read the £56.50 net as a final stack" },
+      { category: "Dashboard", type: "fix", text: "Live-game button now only shows when there's actually a live game today — opening a poll no longer made it appear" },
+      { category: "Dashboard", type: "improvement", text: "Live-game button renamed 'Join Live Game' so it works for everyone, not just the host" },
+
+      // ---- Leaderboards + Profile ------------------------------------------
+      { category: "Leaderboards + Profile", type: "fix", text: "Top-3 podium names get their own row on mobile — no more truncated 'Tris…' between the rank and win-rate columns" },
+      { category: "Leaderboards + Profile", type: "fix", text: "Profile picture editing locked to the linked account's owner (or admin) so randoms can't overwrite someone else's photo" },
+      { category: "Leaderboards + Profile", type: "improvement", text: "'Net' / 'Net Profit' labels renamed to 'Profit' across the app for consistency" },
+
+      // ---- Settlement + History --------------------------------------------
+      { category: "Settlement + History", type: "fix", text: "Settlement breakdown ('Poker £X + Food £Y') now sits on its own row on mobile so it stops overlapping 'owes Toby'" },
+      { category: "Settlement + History", type: "fix", text: "Historic results totals strip — Buy-ins, Food and Pot get proper spacing on mobile and stop crowding each other" },
+      { category: "Settlement + History", type: "improvement", text: "Winner column on the games list shows cash-out + profit so the headline number matches what people walked away with" },
+
+      // ---- Polls -----------------------------------------------------------
+      { category: "Polls", type: "fix", text: "Polls page now loads the existing poll first time on mobile — no more empty list until you pull-to-refresh" },
+    ],
+  },
+  {
     version: "1.6.0",
     date: "May 6, 2026",
     summary: "Big drop — accounts, polls, player linking, and a settlement rework",
