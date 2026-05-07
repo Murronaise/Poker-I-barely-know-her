@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useIsMounted } from "@/lib/use-hydration";
@@ -216,7 +216,7 @@ const recentSessions = historicalGames.slice(0, 4).map((g) => {
     blinds: g.blinds,
     pot: g.totalPot,
     playerCount: g.players.length,
-    winner: { name: winner.name, net: winner.net },
+    winner: { name: winner.name, net: winner.net, cashOut: winner.cashOut, buyIn: winner.buyIn },
   };
 });
 
@@ -282,17 +282,6 @@ export default function Dashboard() {
   const isMounted = useIsMounted();
   const liveGameId = useLiveGameId();
   const reduceMotion = useReducedMotion();
-  const currentDate = useMemo(
-    () =>
-      isMounted
-        ? new Date().toLocaleDateString("en-GB", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })
-        : "",
-    [isMounted],
-  );
 
   // Coarse-pointer detection so we can swap the desktop CSS-marquee for a
   // native horizontal scroller on phones / tablets. Native scroll lets users
@@ -349,25 +338,38 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Desktop / fine-pointer marquee: continuous auto-scroll driven by RAF so we
-  // can swap to drag mid-stream. On coarse pointers we skip the loop entirely
-  // and let the browser's native scroller handle pan + inertia.
+  // Continuous auto-scroll driven by RAF. On desktop/fine-pointer we shift the
+  // inner row with a CSS transform (so click-and-drag can swap in mid-stream).
+  // On coarse-pointer (touch) we drive the *native* scroller's scrollLeft —
+  // that way a finger swipe pans the same scroller and the row keeps creeping
+  // even after the user lets go. The duplicated content list lets us subtract
+  // halfWidth at the wrap point so the loop is seamless in both modes.
   useEffect(() => {
-    if (isCoarsePointer) return;
-    const el = marqueeRef.current;
-    if (!el) return;
+    const scroller = marqueeScrollerRef.current;
+    const inner = marqueeRef.current;
+    if (!scroller || !inner) return;
 
     const measure = () => {
-      halfWidthRef.current = el.scrollWidth / 2;
+      halfWidthRef.current = inner.scrollWidth / 2;
     };
 
     const tick = () => {
-      if (el && !dragRef.current?.active && !isPausedRef.current) {
-        posRef.current -= 0.55;
-        if (halfWidthRef.current > 0 && Math.abs(posRef.current) >= halfWidthRef.current) {
-          posRef.current += halfWidthRef.current;
+      if (!dragRef.current?.active && !isPausedRef.current && halfWidthRef.current > 0) {
+        if (isCoarsePointer) {
+          // Skip the increment if the user is mid-touch — `isPausedRef` flips
+          // on touchstart below — but always reset the wrap so jumping past
+          // halfWidth via inertia still loops cleanly.
+          scroller.scrollLeft += 0.55;
+          if (scroller.scrollLeft >= halfWidthRef.current) {
+            scroller.scrollLeft -= halfWidthRef.current;
+          }
+        } else {
+          posRef.current -= 0.55;
+          if (Math.abs(posRef.current) >= halfWidthRef.current) {
+            posRef.current += halfWidthRef.current;
+          }
+          inner.style.transform = `translateX(${posRef.current}px)`;
         }
-        el.style.transform = `translateX(${posRef.current}px)`;
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -380,6 +382,36 @@ export default function Dashboard() {
     return () => {
       clearTimeout(timer);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isCoarsePointer]);
+
+  // Touch interaction on mobile: pause auto-scroll while the user is panning
+  // with their finger and for a short grace period afterwards (so the marquee
+  // doesn't fight inertial scroll).
+  useEffect(() => {
+    if (!isCoarsePointer) return;
+    const scroller = marqueeScrollerRef.current;
+    if (!scroller) return;
+
+    let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+    const pause = () => {
+      isPausedRef.current = true;
+      if (resumeTimer) clearTimeout(resumeTimer);
+    };
+    const resumeSoon = () => {
+      if (resumeTimer) clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => { isPausedRef.current = false; }, 1500);
+    };
+
+    scroller.addEventListener("touchstart", pause, { passive: true });
+    scroller.addEventListener("touchend", resumeSoon, { passive: true });
+    scroller.addEventListener("touchcancel", resumeSoon, { passive: true });
+
+    return () => {
+      scroller.removeEventListener("touchstart", pause);
+      scroller.removeEventListener("touchend", resumeSoon);
+      scroller.removeEventListener("touchcancel", resumeSoon);
+      if (resumeTimer) clearTimeout(resumeTimer);
     };
   }, [isCoarsePointer]);
 
@@ -476,30 +508,19 @@ export default function Dashboard() {
       animate="show"
       className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.08)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA]"
     >
-      {/* Hero strip — title + date + live/start CTA */}
+      {/* Hero strip — live/start CTA only. Title and date were removed to give
+          mobile dashboards more room for the cards below. On mobile we hide
+          the "Start New Game" CTA entirely (admins can still launch a game
+          from the games list page); the live-session CTA only renders when
+          there's an active game today (useLiveGameId enforces the date check
+          and returns null on SSR, so no hydration mismatch). */}
       <motion.div
         variants={sectionVariants}
-        className="px-4 md:px-6 xl:px-12 pt-4 pb-3 shrink-0"
+        className={`px-4 md:px-6 xl:px-12 pt-3 pb-2 shrink-0 ${
+          liveGameId ? "" : "hidden md:block"
+        }`}
       >
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 md:p-2.5 bg-[#39FF14]/10 rounded-xl border border-[#39FF14]/20 shrink-0">
-              <Activity className="text-[#39FF14]" size={22} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
-                Dashboard
-              </h1>
-              {currentDate && (
-                <p className="text-white/50 text-base mt-2 flex items-center gap-2 flex-wrap">
-                  <Calendar size={14} className="text-[#39FF14]/60 shrink-0" />
-                  <span>{currentDate}</span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-3">
             {liveGameId ? (
               <Link href={`/games/${liveGameId}`}>
                 <motion.button
@@ -511,7 +532,7 @@ export default function Dashboard() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
                   </span>
-                  Resume Live Session
+                  Join Live Game
                   <ChevronRight size={14} />
                 </motion.button>
               </Link>
@@ -529,7 +550,6 @@ export default function Dashboard() {
               </Link>
             )}
           </div>
-        </div>
       </motion.div>
 
       {/* Poll banner — only renders when there's a relevant poll for this user */}
@@ -551,13 +571,17 @@ export default function Dashboard() {
               <Link
                 href={s.href}
                 aria-label={s.ariaLabel}
-                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-[#39FF14]/40 hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 group"
+                className="h-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-[#39FF14]/40 hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 group"
               >
                 <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
                   <s.icon className={s.color} size={16} />
                 </div>
+                {/* `truncate` on the label keeps "TOTAL VOLUME" / "BIGGEST POT"
+                    on a single line at narrow widths so all four cards line up
+                    at the same height (was wrapping → row-1 cards taller than
+                    row-2 on phones). */}
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold tracking-widest uppercase text-white/40">
+                  <p className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-white/40 truncate">
                     {s.label}
                   </p>
                   <p className="text-lg md:text-xl font-black text-white truncate animate-count-pop">
@@ -593,7 +617,7 @@ export default function Dashboard() {
           onMouseLeave={() => { isPausedRef.current = false; }}
           className={`dashboard-marquee-mask py-4 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/50 rounded-xl ${
             isCoarsePointer
-              ? "overflow-x-auto overflow-y-hidden snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              ? "overflow-x-auto overflow-y-hidden [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               : "overflow-hidden cursor-grab active:cursor-grabbing"
           }`}
         >
@@ -606,7 +630,12 @@ export default function Dashboard() {
             onPointerUp={handleMarqueePointerUp}
             onPointerCancel={handleMarqueePointerUp}
           >
-            {(isCoarsePointer ? metrics : [...metrics, ...metrics]).map((metric, idx) => (
+            {/* Always render the doubled list so the auto-scroll wrap point
+                (subtract halfWidth) lands on a duplicate and the loop is
+                visually seamless on both desktop transform and mobile
+                scrollLeft. Snap-mandatory was dropped above so it doesn't
+                yank the row back to a card edge while auto-scroll is creeping. */}
+            {[...metrics, ...metrics].map((metric, idx) => (
               <div
                 key={`${metric.id}-${idx}`}
                 data-marquee-card
@@ -625,9 +654,7 @@ export default function Dashboard() {
                     router.push(`/leaderboards?category=${metric.categorySlug}`);
                   }
                 }}
-                className={`w-[280px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-2xl ${
-                  isCoarsePointer ? "snap-start" : ""
-                }`}
+                className="w-[280px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-2xl"
               >
                 <div
                   className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/15 hover:border-white/30 hover:-translate-y-0.5 transition-all duration-300 rounded-2xl p-4 flex flex-col h-full group select-none relative overflow-hidden"
@@ -736,18 +763,32 @@ export default function Dashboard() {
               <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="flex-1 min-h-0">
+          {/* On mobile the chart needs ~70px of x-axis space per player or
+              names overlap — so wrap in a horizontal scroller with an explicit
+              min-width below md and let users pan to see every label. From md
+              up the chart stretches to fill the panel as before. */}
+          <div className="flex-1 min-h-0 overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div
+              className="h-full md:w-full"
+              style={{
+                minWidth:
+                  typeof window !== "undefined" && window.innerWidth < 768
+                    ? `${Math.max(chartData.length * 64, 480)}px`
+                    : undefined,
+              }}
+            >
             {isMounted ? (
               chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%" style={{ overflow: "visible" }}>
-                  <BarChart data={chartData} style={{ overflow: "visible" }}>
+                  <BarChart data={chartData} style={{ overflow: "visible" }} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                     <XAxis
                       dataKey="name"
                       stroke="#ffffff40"
-                      tick={{ fill: "#ffffff80", fontSize: 13 }}
+                      tick={{ fill: "#ffffff80", fontSize: 12 }}
                       axisLine={false}
                       tickLine={false}
+                      interval={0}
                       dy={8}
                     />
                     <YAxis
@@ -810,6 +851,7 @@ export default function Dashboard() {
                 LOADING...
               </div>
             )}
+            </div>
           </div>
         </motion.div>
 
@@ -868,14 +910,22 @@ export default function Dashboard() {
                         className="absolute -top-1 -right-1 text-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.6)]"
                       />
                     </div>
+                    {/* Headline number is the winner's final stack (£81.50)
+                        not the net (£56.50) — readers expected to see what
+                        they walked away with. The smaller line keeps the net
+                        visible because that's still the meaningful tracking
+                        figure (cash-out − buy-in). */}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-white truncate">{s.winner.name}</p>
+                      <p className="text-base font-black tabular-nums text-white">
+                        £{s.winner.cashOut.toFixed(2)}
+                      </p>
                       <p
-                        className={`text-base font-black tabular-nums ${
+                        className={`text-xs font-bold tabular-nums ${
                           positive ? "text-[#39FF14]" : "text-red-400"
                         }`}
                       >
-                        {positive ? "+" : ""}£{s.winner.net.toFixed(2)}
+                        {positive ? "+" : ""}£{s.winner.net.toFixed(2)} net
                       </p>
                     </div>
                     <ChevronRight

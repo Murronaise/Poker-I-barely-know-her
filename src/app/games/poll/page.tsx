@@ -72,7 +72,25 @@ export default function PollsListPage() {
       await load();
     };
     init();
-    return () => { cancelled = true; };
+
+    // Mobile cold-start fix: on first navigation from another route the
+    // browser sometimes runs the initial poll query before the Supabase
+    // session cookie has finished rehydrating, so RLS returns zero rows and
+    // the page reads as empty until the user pulls-to-refresh. Re-running
+    // load() on the next auth state change picks up the now-authenticated
+    // session and shows the existing poll without needing a manual refresh.
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (cancelled) return;
+        setMe(session?.user ? { id: session.user.id } : null);
+        load();
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      authListener?.subscription.unsubscribe();
+    };
   }, [supabase, load]);
 
   return (

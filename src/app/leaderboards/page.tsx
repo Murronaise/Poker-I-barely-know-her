@@ -173,25 +173,52 @@ export default async function LeaderboardsPage({
                             : "shadow-orange-400/20"
                       }`}
                     />
-                    {/* One row: rank ‖ name ‖ win-rate. Name takes remaining
-                        flex space and truncates if the card gets narrow. */}
-                    <div className="flex items-center justify-between w-full gap-2 mt-auto">
+                    {/* On mobile, give the name its own full-width row above
+                        rank+win — squeezing it between the two flanking cells
+                        on a 360px viewport left ~70px for names like "Tristan"
+                        and they were truncating with an ellipsis. From sm up
+                        we keep the original single-row layout where there's
+                        plenty of width. */}
+                    <div className="flex flex-col w-full gap-1.5 mt-auto sm:hidden">
+                      <p className="font-black text-white text-sm text-center truncate w-full px-1">
+                        {row.player}
+                      </p>
+                      <div className="flex items-center justify-between w-full gap-1">
+                        <div className="flex flex-col items-center shrink-0">
+                          <span className={`text-base font-black leading-none ${rankColor}`}>
+                            #{realRank}
+                          </span>
+                          <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest mt-0.5">
+                            {row.sessions} sess
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-center shrink-0">
+                          <span className="text-sm font-bold text-cyan-400 leading-none">
+                            {row.winRate}
+                          </span>
+                          <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest mt-0.5">
+                            win
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="hidden sm:flex items-center justify-between w-full gap-2 mt-auto">
                       <div className="flex flex-col items-center shrink-0">
-                        <span className={`text-base sm:text-xl font-black leading-none ${rankColor}`}>
+                        <span className={`text-xl font-black leading-none ${rankColor}`}>
                           #{realRank}
                         </span>
-                        <span className="text-[9px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest mt-0.5">
+                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-0.5">
                           {row.sessions} sess
                         </span>
                       </div>
-                      <p className="font-black text-white text-sm sm:text-base text-center truncate flex-1 min-w-0 px-1">
+                      <p className="font-black text-white text-base text-center truncate flex-1 min-w-0 px-1">
                         {row.player}
                       </p>
                       <div className="flex flex-col items-center shrink-0">
-                        <span className="text-sm sm:text-base font-bold text-cyan-400 leading-none">
+                        <span className="text-base font-bold text-cyan-400 leading-none">
                           {row.winRate}
                         </span>
-                        <span className="text-[9px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest mt-0.5">
+                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-0.5">
                           win
                         </span>
                       </div>

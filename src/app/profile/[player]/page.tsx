@@ -35,6 +35,7 @@ import { supabase } from "@/lib/supabase";
 import { historicalGames } from "@/lib/historical-games";
 import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
+import { isAdmin } from "@/lib/auth";
 import { BadgeCheck } from "lucide-react";
 
 export default function ProfilePage({
@@ -64,9 +65,12 @@ export default function ProfilePage({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Verified = a registered user owns this player_name. "(You)" = it's the
-  // logged-in viewer's own profile.
+  // logged-in viewer's own profile. `canEdit` gates the avatar upload + frame
+  // controls so randoms can't overwrite someone else's picture (only the
+  // owner of the linked account or an admin should be able to change it).
   const [isVerified, setIsVerified] = useState(false);
   const [isMine, setIsMine] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
 
   // Fetch existing avatar on mount
   useEffect(() => {
@@ -89,7 +93,8 @@ export default function ProfilePage({
   }, [playerName]);
 
   // Check if any registered user owns this player_name (case-insensitive),
-  // and whether the viewer themselves owns it.
+  // whether the viewer themselves owns it, and whether the viewer is admin
+  // (admins keep edit rights for moderation).
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
@@ -99,14 +104,35 @@ export default function ProfilePage({
       ]);
       if (cancelled) return;
       const ownerEmail = matches?.[0]?.email ?? null;
+      const myEmail = meResp.user?.email ?? null;
+      const mine = Boolean(ownerEmail && myEmail && ownerEmail.toLowerCase() === myEmail.toLowerCase());
       setIsVerified(Boolean(ownerEmail));
-      setIsMine(Boolean(ownerEmail && meResp.user?.email && ownerEmail.toLowerCase() === meResp.user.email.toLowerCase()));
+      setIsMine(mine);
+
+      // Admin check: email allow-list first (sync), then DB lookup for
+      // anyone promoted via the `users.is_admin` flag.
+      let admin = isAdmin(myEmail);
+      if (!admin && myEmail) {
+        const { data: profile } = await supabase
+          .from("users")
+          .select("is_admin")
+          .eq("email", myEmail)
+          .maybeSingle();
+        admin = profile?.is_admin === true;
+      }
+      if (cancelled) return;
+      setCanEdit(mine || admin);
     };
     check();
     return () => { cancelled = true; };
   }, [playerName]);
 
   const handleAvatarClick = () => {
+    // Only the owning account (or an admin) can change the picture. We've
+    // already hidden the edit affordances when canEdit is false, but this
+    // belt-and-braces guard stops the menu from opening if the click reaches
+    // the avatar through some other path (keyboard focus, etc.).
+    if (!canEdit) return;
     // Always toggle the menu so users can choose between Replace and Adjust.
     // (Previously, with no avatar set we jumped straight to the file picker,
     // which hid the menu entirely once supabase fell back to a placeholder.)
@@ -281,32 +307,39 @@ export default function ProfilePage({
         {/* Profile Header */}
         <div className="flex flex-col md:flex-row gap-5 md:items-center">
           <div
-            className="relative group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-full shrink-0 mx-auto md:mx-0"
-            role="button"
-            tabIndex={0}
-            aria-haspopup="menu"
-            aria-expanded={showAvatarMenu}
-            aria-label={avatarUrl ? "Change or reframe profile picture" : "Upload profile picture"}
-            onClick={handleAvatarClick}
+            className={`relative group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-full shrink-0 mx-auto md:mx-0 ${
+              canEdit ? "cursor-pointer" : ""
+            }`}
+            role={canEdit ? "button" : undefined}
+            tabIndex={canEdit ? 0 : -1}
+            aria-haspopup={canEdit ? "menu" : undefined}
+            aria-expanded={canEdit ? showAvatarMenu : undefined}
+            aria-label={canEdit ? (avatarUrl ? "Change or reframe profile picture" : "Upload profile picture") : `${playerName}'s profile picture`}
+            onClick={canEdit ? handleAvatarClick : undefined}
             onKeyDown={(e) => {
+              if (!canEdit) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 handleAvatarClick();
               }
             }}
           >
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/*"
-              onChange={handleFileChange}
-            />
+            {canEdit && (
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleFileChange}
+              />
+            )}
             <div
               className={`w-28 h-28 md:w-32 md:h-32 rounded-full border-4 shadow-[0_0_30px_rgba(57,255,20,0.2)] overflow-hidden transition-all duration-300 ${
                 isUploading
                   ? "border-white/50 animate-pulse"
-                  : "border-white/10 group-hover:border-[#39FF14]"
+                  : canEdit
+                    ? "border-white/10 group-hover:border-[#39FF14]"
+                    : "border-white/10"
               }`}
             >
               <PlayerAvatar
@@ -317,15 +350,17 @@ export default function ProfilePage({
                 className="w-full h-full"
               />
             </div>
-            <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Camera className="text-white mb-1" size={20} />
-              <span className="text-xs font-bold tracking-widest uppercase text-white">
-                {avatarUrl ? "Edit" : "Upload"}
-              </span>
-            </div>
+            {canEdit && (
+              <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera className="text-white mb-1" size={20} />
+                <span className="text-xs font-bold tracking-widest uppercase text-white">
+                  {avatarUrl ? "Edit" : "Upload"}
+                </span>
+              </div>
+            )}
             {/* Options menu — drops BELOW the avatar so it never lands above
                 the top of the viewport. */}
-            {showAvatarMenu && (
+            {canEdit && showAvatarMenu && (
               <div
                 className="absolute top-full left-0 mt-3 bg-[#0E1117] border border-white/15 rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.6)] z-30 overflow-hidden min-w-[200px]"
                 onClick={(e) => e.stopPropagation()}
@@ -375,13 +410,15 @@ export default function ProfilePage({
               <Calendar size={13} className="text-[#39FF14]/70" />
               <span>{playerSessions.length} sessions tracked</span>
             </div>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handleAvatarClick(); }}
-              className="mt-3 inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
-            >
-              <Camera size={14} aria-hidden="true" /> {avatarUrl ? "Change Picture" : "Upload Picture"}
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleAvatarClick(); }}
+                className="mt-3 inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
+              >
+                <Camera size={14} aria-hidden="true" /> {avatarUrl ? "Change Picture" : "Upload Picture"}
+              </button>
+            )}
           </div>
 
         </div>

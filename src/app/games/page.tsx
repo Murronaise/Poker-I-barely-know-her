@@ -237,13 +237,21 @@ export default function GamesIndexPage() {
                   </div>
                 </div>
 
-                {/* Winner */}
+                {/* Winner — show the player's final stack (`cashOut`) as the
+                    headline number with their net profit underneath. Showing
+                    only the net was confusing readers who expected the chips
+                    they walked away with (e.g. Jake ended on £81.50 with £25
+                    in, but the row used to read "+£56.50" in isolation). */}
                 <div className="flex items-center gap-2 min-w-0">
                   <Crown size={14} className="text-yellow-400 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Winner</p>
                     <p className="text-base font-bold text-yellow-400 truncate">
-                      {winner.name} <span className="text-[#39FF14]">+£{winner.net.toFixed(2)}</span>
+                      {winner.name}{" "}
+                      <span className="text-white/90">£{winner.cashOut.toFixed(2)}</span>
+                    </p>
+                    <p className="text-xs text-[#39FF14] font-bold tabular-nums">
+                      +£{winner.net.toFixed(2)} net
                     </p>
                   </div>
                 </div>
