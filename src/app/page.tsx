@@ -855,11 +855,15 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Recent Sessions side panel — visible from lg (1024px) up. */}
+        {/* Recent Sessions panel — stacks below the heatmap on mobile, sits
+            beside it from lg up. The outer grid is grid-cols-1 lg:grid-cols-2,
+            so removing the hidden class is all that's needed to surface it on
+            phones. Capped at max-h on mobile so it doesn't push the page so
+            far that the marquee is invisible. */}
         <motion.aside
           variants={sectionVariants}
           aria-label="Recent sessions"
-          className="hidden lg:flex flex-col bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 min-h-0"
+          className="flex flex-col bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 min-h-0 max-h-[420px] lg:max-h-none"
         >
           <div className="flex items-center justify-between mb-3 shrink-0">
             <div className="flex items-center gap-3">

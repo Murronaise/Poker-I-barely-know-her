@@ -190,21 +190,24 @@ export default async function HistoricalGamePage({
             ))}
           </div>
 
-          {/* Totals strip */}
-          <div className="border-t border-white/10 bg-black/40 px-4 md:px-6 py-2.5 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/40">
+          {/* Totals strip — on mobile we stack the totals onto their own row
+              under the "Totals" caption and let them split across the row with
+              justify-between so the values don't crowd each other. From sm up
+              the original inline layout returns. */}
+          <div className="border-t border-white/10 bg-black/40 px-4 md:px-6 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 shrink-0">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/40 shrink-0">
               <ArrowRightSquare size={11} />
               Totals
             </div>
-            <div className="flex items-center gap-4 md:gap-6 text-sm">
-              <span className="text-white/50">
-                Buy-ins: <span className="text-white/80 font-bold">£{totalBuyIn.toFixed(2)}</span>
+            <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-6 text-sm w-full sm:w-auto">
+              <span className="text-white/50 truncate">
+                Buy-ins <span className="text-white/80 font-bold tabular-nums">£{totalBuyIn.toFixed(2)}</span>
               </span>
-              <span className="text-white/50">
-                Food: <span className="text-yellow-400/80 font-bold">£{totalFood.toFixed(2)}</span>
+              <span className="text-white/50 truncate">
+                Food <span className="text-yellow-400/80 font-bold tabular-nums">£{totalFood.toFixed(2)}</span>
               </span>
-              <span className="text-white/50">
-                Pot: <span className="text-[#39FF14] font-bold">£{game.totalPot.toFixed(2)}</span>
+              <span className="text-white/50 truncate">
+                Pot <span className="text-[#39FF14] font-bold tabular-nums">£{game.totalPot.toFixed(2)}</span>
               </span>
             </div>
           </div>
