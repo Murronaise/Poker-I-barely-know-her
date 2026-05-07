@@ -25,7 +25,7 @@ export const leaderboardCategories: Record<string, LeaderboardCategory> = {
     slug: "overall-leader",
     title: "Money Printer",
     subtitle: "The biggest all-time winner.",
-    metricLabel: "Net Profit",
+    metricLabel: "Profit",
     rows: [
       { rank: 1, player: "Jake", value: "+£56.65", winRate: "100%", sessions: 2, positive: true, trendDirection: "up" },
       { rank: 2, player: "Tony", value: "+£42.50", winRate: "100%", sessions: 1, positive: true, trendDirection: "flat" },

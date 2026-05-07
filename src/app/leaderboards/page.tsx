@@ -101,12 +101,16 @@ export default async function LeaderboardsPage({
         <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4 mt-6 md:mt-8 items-end shrink-0">
           {podiumVisual.map((row) => {
             const realRank = row.rank;
+            // Mobile heights bumped: avatar + name row + rank/win row + value
+            // strip + padding was overflowing the old 210/190/180 boxes (rank
+            // was clipping the value). The sm/md sizes are unchanged because
+            // there's no overlap once the layout switches back to single-row.
             const heightClass =
               realRank === 1
-                ? "h-[210px] sm:h-[240px] md:h-[270px]"
+                ? "h-[260px] sm:h-[240px] md:h-[270px]"
                 : realRank === 2
-                  ? "h-[190px] sm:h-[215px] md:h-[240px]"
-                  : "h-[180px] sm:h-[200px] md:h-[225px]";
+                  ? "h-[240px] sm:h-[215px] md:h-[240px]"
+                  : "h-[230px] sm:h-[200px] md:h-[225px]";
             const accent =
               realRank === 1
                 ? "border-yellow-400/60 shadow-[0_0_40px_rgba(250,204,21,0.3)] bg-gradient-to-b from-yellow-400/15 to-transparent"

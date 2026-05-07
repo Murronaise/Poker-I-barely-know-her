@@ -123,7 +123,13 @@ export default function NavBar() {
 
   const liveGameIdInUrl = (() => {
     const match = pathname.match(/^\/games\/([^/]+)$/);
-    return match && match[1] !== "create" ? match[1] : null;
+    if (!match) return null;
+    // /games/[id] is the live-game route, but other reserved single-segment
+    // children share the prefix and would otherwise get stored as a fake live
+    // game id (which then made the dashboard show "Join Live Game" linking to
+    // /games/poll when the user only opened a poll, not a game).
+    const RESERVED = new Set(["create", "poll", "history"]);
+    return RESERVED.has(match[1]) ? null : match[1];
   })();
 
   // Persist the live game id whenever we land on a live game URL so the

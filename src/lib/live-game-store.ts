@@ -17,10 +17,17 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Reserved /games/<seg> children that aren't real live-game ids. If one of
+// these slipped through the navbar's URL-watcher in an older build it still
+// lives in sessionStorage today; we drop it on read so the dashboard doesn't
+// keep showing "Join Live Game" linking to /games/poll.
+const RESERVED_IDS = new Set(["create", "poll", "history"]);
+
 function parse(stored: string | null): { id: string; date: string } | null {
   if (!stored) return null;
   const [id, date] = stored.split("|");
   if (!id || !date) return null;
+  if (RESERVED_IDS.has(id)) return null;
   return { id, date };
 }
 

@@ -145,7 +145,7 @@ export default async function HistoricalGamePage({
             <div className="col-span-2 text-right">Buy-in</div>
             <div className="hidden md:block col-span-2 text-right">Cash Out</div>
             <div className="hidden md:block col-span-2 text-right">Food</div>
-            <div className="col-span-5 md:col-span-2 text-right text-[#39FF14]">Net</div>
+            <div className="col-span-5 md:col-span-2 text-right text-[#39FF14]">Profit</div>
           </div>
 
           <div className="divide-y divide-white/5">
@@ -217,31 +217,39 @@ export default async function HistoricalGamePage({
             settlements.map((s, i) => (
               <div
                 key={i}
-                className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex items-center justify-between"
+                className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
               >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Top row on mobile, left side on tablet+: avatar + name + total.
+                    The total moves up here on mobile so it sits next to the
+                    name rather than colliding with the breakdown text below. */}
+                <div className="flex items-center gap-3 min-w-0">
                   <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
-                  <div className="min-w-0 flex flex-col gap-1">
+                  <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                     <p className="text-sm font-bold text-white truncate">{s.from}</p>
-                    <p className="text-xs text-red-400/70 uppercase tracking-widest font-semibold">owes {s.to}</p>
+                    <p className="text-xs text-red-400/70 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
                   </div>
+                  <p className="text-lg font-black text-red-400 tabular-nums shrink-0 sm:hidden">
+                    £{(s.pence / 100).toFixed(2)}
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-3 ml-3 shrink-0">
-                  <div className="text-right">
-                    <p className="text-lg font-black text-red-400 tabular-nums">£{(s.pence / 100).toFixed(2)}</p>
-                    {(s.pokerPence > 0 || s.foodPence > 0) && (
-                      <p className="text-xs text-white/70 mt-0.5">
-                        {s.pokerPence > 0 && s.foodPence > 0 ? (
-                          `Poker £${(s.pokerPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
-                        ) : s.pokerPence > 0 ? (
-                          `Poker £${(s.pokerPence / 100).toFixed(2)}`
-                        ) : (
-                          `Food £${(s.foodPence / 100).toFixed(2)}`
-                        )}
-                      </p>
-                    )}
-                  </div>
+                {/* Bottom row on mobile (full width), right side on tablet+:
+                    breakdown + the desktop-only total + settle button. The
+                    breakdown gets its own row on phones so "Poker £X + Food £Y"
+                    no longer overlaps the "owes Toby" caption to its left. */}
+                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                  {(s.pokerPence > 0 || s.foodPence > 0) && (
+                    <p className="text-xs text-white/70 tabular-nums">
+                      {s.pokerPence > 0 && s.foodPence > 0
+                        ? `Poker £${(s.pokerPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
+                        : s.pokerPence > 0
+                          ? `Poker £${(s.pokerPence / 100).toFixed(2)}`
+                          : `Food £${(s.foodPence / 100).toFixed(2)}`}
+                    </p>
+                  )}
+                  <p className="text-lg font-black text-red-400 tabular-nums hidden sm:block">
+                    £{(s.pence / 100).toFixed(2)}
+                  </p>
                   <SettlementSettleButton
                     gameId={game.id}
                     playerName={s.from}

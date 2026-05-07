@@ -348,7 +348,7 @@ export default function PlayersIndexPage() {
                         <div className="flex items-end justify-between gap-2">
                           <div>
                             <p className="text-xs text-white/40 uppercase font-bold tracking-widest mb-0.5">
-                              Net Profit
+                              Profit
                             </p>
                             <div className="flex items-center gap-1.5">
                               {isPositive ? (

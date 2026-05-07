@@ -585,7 +585,7 @@ function ActiveGameContent() {
               <div>Player</div>
               <div className="text-right">Buy-in</div>
               <div className="text-right">Cash Out</div>
-              <div className="text-right border-x border-white/10 px-3">Game Net</div>
+              <div className="text-right border-x border-white/10 px-3">Game Profit</div>
               <div className="text-right text-[#39FF14]">Total w/ Food</div>
             </div>
             <div className="divide-y divide-white/5">
@@ -879,7 +879,7 @@ function ActiveGameContent() {
                     <ArrowRightSquare size={11} className="text-red-400/70" /> Cash Out
                   </span>
                 </th>
-                <th className="text-right px-2 py-2.5">Net</th>
+                <th className="text-right px-2 py-2.5">Profit</th>
                 <th className="text-right px-2 py-2.5 pr-3 md:pr-4">Action</th>
               </tr>
             </thead>

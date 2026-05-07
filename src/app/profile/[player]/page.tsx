@@ -426,7 +426,7 @@ export default function ProfilePage({
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { icon: TrendingUp, label: "Net Profit", value: formatNet(totalNet), color: totalNet >= 0 ? "text-[#39FF14]" : "text-red-400" },
+            { icon: TrendingUp, label: "Profit", value: formatNet(totalNet), color: totalNet >= 0 ? "text-[#39FF14]" : "text-red-400" },
             { icon: Target, label: "Win Rate", value: `${winRatePct}%`, color: "text-cyan-400" },
             { icon: Clock, label: "Sessions", value: String(playerSessions.length), color: "text-yellow-400" },
             { icon: CircleDollarSign, label: "Avg Buy-In", value: `£${avgBuyIn.toFixed(2)}`, color: "text-emerald-400" },
@@ -619,7 +619,7 @@ export default function ProfilePage({
                 <div className="col-span-2 text-right">Buy-in</div>
                 <div className="col-span-2 text-right">Cash Out</div>
                 <div className="col-span-2 text-right">Food</div>
-                <div className="col-span-3 text-right">Net</div>
+                <div className="col-span-3 text-right">Profit</div>
               </div>
               {playerSessions.map((s) => {
                 const positive = s.net >= 0;

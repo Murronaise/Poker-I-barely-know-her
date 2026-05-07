@@ -749,7 +749,7 @@ export default function Dashboard() {
           <div className="flex items-end justify-between mb-3 gap-3 shrink-0">
             <div>
               <h2 className="text-base md:text-lg font-black tracking-widest uppercase">
-                Lifetime Net Profit
+                Lifetime Profit
               </h2>
               <p className="text-sm text-white/40 mt-1">
                 All sessions · {chartData.length} players
@@ -819,7 +819,7 @@ export default function Dashboard() {
                       formatter={(_value, _name, entry) => {
                         const n = Number((entry?.payload as { profit?: number } | undefined)?.profit ?? 0);
                         const sign = n < 0 ? "−" : "+";
-                        const label = n < 0 ? "Net Loss" : "Net Profit";
+                        const label = n < 0 ? "Loss" : "Profit";
                         return [
                           <span
                             key="v"
@@ -925,7 +925,7 @@ export default function Dashboard() {
                           positive ? "text-[#39FF14]" : "text-red-400"
                         }`}
                       >
-                        {positive ? "+" : ""}£{s.winner.net.toFixed(2)} net
+                        {positive ? "+" : ""}£{s.winner.net.toFixed(2)} profit
                       </p>
                     </div>
                     <ChevronRight

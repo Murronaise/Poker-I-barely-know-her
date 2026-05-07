@@ -251,7 +251,7 @@ export default function GamesIndexPage() {
                       <span className="text-white/90">£{winner.cashOut.toFixed(2)}</span>
                     </p>
                     <p className="text-xs text-[#39FF14] font-bold tabular-nums">
-                      +£{winner.net.toFixed(2)} net
+                      +£{winner.net.toFixed(2)} profit
                     </p>
                   </div>
                 </div>
