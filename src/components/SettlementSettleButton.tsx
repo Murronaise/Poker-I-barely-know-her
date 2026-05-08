@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check } from "lucide-react";
-import { isPlayerSettled, togglePlayerSettled } from "@/lib/local-store";
+import { Check, Loader2 } from "lucide-react";
+import { togglePlayerSettledDb } from "@/lib/settlements-db";
 import { useIsMounted } from "@/lib/use-hydration";
 import { emitSettlementToggled, onSettlementToggled } from "@/lib/settlement-events";
 
@@ -11,35 +11,30 @@ type Props = {
   playerName: string;
   /** When false the button is read-only — non-admins still see the badge. */
   isAdmin: boolean;
+  /** Server-rendered initial state from Supabase. */
+  initialSettled: boolean;
 };
 
-export default function SettlementSettleButton({ gameId, playerName, isAdmin }: Props) {
+export default function SettlementSettleButton({ gameId, playerName, isAdmin, initialSettled }: Props) {
   const isMounted = useIsMounted();
-  const [settled, setSettled] = useState(false);
+  const [settled, setSettled] = useState(initialSettled);
+  const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    if (isMounted) setSettled(isPlayerSettled(gameId, playerName));
-  }, [isMounted, gameId, playerName]);
-
-  // Re-read whenever any settlement toggle fires for this game. Most events
-  // come from this component's own click, but the admin "Reset" button on
-  // HistoryActions broadcasts a clear (empty playerName) that wipes every
-  // tick on the page — we have to react to that too.
+  // Re-sync from sibling toggles on the same page (e.g. admin "Reset" button
+  // wipes every tick — it broadcasts with an empty playerName).
   useEffect(() => {
     return onSettlementToggled((detail) => {
       if (detail.gameId !== gameId) return;
-      // Either a global reset (empty name) or our own player toggling.
-      if (detail.playerName === "" || detail.playerName.toLowerCase() === playerName.toLowerCase()) {
-        setSettled(isPlayerSettled(gameId, playerName));
+      if (detail.playerName === "") {
+        // Game-wide reset.
+        setSettled(false);
+        return;
+      }
+      if (detail.playerName.toLowerCase() === playerName.toLowerCase()) {
+        setSettled(detail.settled);
       }
     });
   }, [gameId, playerName]);
-
-  if (!isMounted) {
-    // Reserve roughly the right space so the layout doesn't jump when the
-    // client takes over.
-    return <div aria-hidden="true" className="w-[88px] h-7 shrink-0" />;
-  }
 
   // Read-only badge for non-admins — they should still see who's paid.
   if (!isAdmin) {
@@ -55,24 +50,46 @@ export default function SettlementSettleButton({ gameId, playerName, isAdmin }: 
     );
   }
 
-  const handleClick = () => {
-    const next = togglePlayerSettled(gameId, playerName);
-    setSettled(next);
-    emitSettlementToggled({ gameId, playerName, settled: next });
+  if (!isMounted) {
+    return <div aria-hidden="true" className="w-[88px] h-7 shrink-0" />;
+  }
+
+  const handleClick = async () => {
+    if (pending) return;
+    const previous = settled;
+    const optimistic = !previous;
+    setSettled(optimistic);
+    setPending(true);
+    try {
+      const next = await togglePlayerSettledDb(gameId, playerName, previous);
+      setSettled(next);
+      emitSettlementToggled({ gameId, playerName, settled: next });
+    } catch (err) {
+      // Revert on failure (most likely RLS rejection or network blip).
+      setSettled(previous);
+      console.error("[settlement] toggle failed", err);
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
     <button
       onClick={handleClick}
+      disabled={pending}
       aria-pressed={settled}
       aria-label={settled ? `Mark ${playerName} as not settled` : `Mark ${playerName} as settled`}
-      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors shrink-0 ${
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors shrink-0 disabled:opacity-60 ${
         settled
           ? "text-[#39FF14] bg-[#39FF14]/15 border-[#39FF14]/40 hover:bg-[#39FF14]/25"
           : "text-white/60 bg-white/5 border-white/15 hover:bg-white/10 hover:text-white"
       }`}
     >
-      <Check size={10} className={settled ? "" : "opacity-40"} />
+      {pending ? (
+        <Loader2 size={10} className="animate-spin" />
+      ) : (
+        <Check size={10} className={settled ? "" : "opacity-40"} />
+      )}
       {settled ? "Paid" : "Mark Paid"}
     </button>
   );

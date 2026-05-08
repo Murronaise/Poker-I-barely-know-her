@@ -19,6 +19,7 @@ import { FOOD_PAYER } from "@/lib/local-store";
 import { supabase } from "@/lib/supabase";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdminDb } from "@/lib/auth";
+import { fetchSettledPlayers } from "@/lib/settlements-db";
 
 export default async function HistoricalGamePage({
   params,
@@ -32,6 +33,7 @@ export default async function HistoricalGamePage({
   const sb = await createSupabaseServerClient();
   const { data: { user } } = await sb.auth.getUser();
   const userIsAdmin = await isAdminDb(sb, user?.email);
+  const settledPlayers = await fetchSettledPlayers(sb, game.id);
 
   // Fetch avatar URLs from Supabase
   const { data: playerRows } = await supabase
@@ -50,20 +52,26 @@ export default async function HistoricalGamePage({
   const totalBuyIn = game.players.reduce((s, p) => s + p.buyIn, 0);
   const totalFood = game.players.reduce((s, p) => s + p.food, 0);
 
-  // Combined settlement: only losers owe poker losses, all non-admins owe food to admin
-  const settlements = game.players
+  // Admin-collects-all model. For each non-admin player:
+  //   net = pokerNet − food   (positive ⇒ admin pays them; negative ⇒ they pay admin)
+  // A winner's winnings absorb their food first; if winnings cover food the
+  // player drops out of the "owing" list and lands in the "receiving" list with
+  // the remainder. Losers owe poker loss + food in full.
+  const playerNets = game.players
+    .filter((p) => p.name !== FOOD_PAYER)
     .map((p) => {
       const pokerNet = p.cashOut - p.buyIn;
-      const pokerLoss = Math.max(0, -pokerNet); // only count losses, not wins
-      const totalOwed = pokerLoss + p.food;
-      return {
-        name: p.name,
-        pokerLoss,
-        foodSpend: p.food,
-        totalOwed,
-      };
-    })
-    .filter((p) => p.totalOwed > 0.005 && p.name !== FOOD_PAYER)
+      return { name: p.name, pokerNet, food: p.food, net: pokerNet - p.food };
+    });
+
+  const settlements = playerNets
+    .filter((p) => p.net < -0.005)
+    .map((p) => ({
+      name: p.name,
+      pokerLoss: Math.max(0, -p.pokerNet),
+      foodSpend: p.pokerNet > 0 ? Math.max(0, p.food - p.pokerNet) : p.food,
+      totalOwed: -p.net,
+    }))
     .sort((a, b) => b.totalOwed - a.totalOwed)
     .map((p) => ({
       from: p.name,
@@ -71,6 +79,17 @@ export default async function HistoricalGamePage({
       pence: Math.round(p.totalOwed * 100),
       pokerPence: Math.round(p.pokerLoss * 100),
       foodPence: Math.round(p.foodSpend * 100),
+    }));
+
+  const payouts = playerNets
+    .filter((p) => p.net > 0.005)
+    .sort((a, b) => b.net - a.net)
+    .map((p) => ({
+      to: p.name,
+      from: FOOD_PAYER,
+      pence: Math.round(p.net * 100),
+      pokerPence: Math.round(Math.max(0, p.pokerNet) * 100),
+      foodPence: Math.round(p.food * 100),
     }));
 
   const facts = [
@@ -96,7 +115,11 @@ export default async function HistoricalGamePage({
             gameId={game.id}
             isAdmin={userIsAdmin}
             game={game}
-            requiredPayers={settlements.map((s) => s.from)}
+            requiredPayers={[
+              ...settlements.map((s) => s.from),
+              ...payouts.map((p) => p.to),
+            ]}
+            initialSettledKeys={Array.from(settledPlayers)}
           />
           <span className="font-mono text-xs tracking-widest uppercase text-white/30">
             session #{game.id}
@@ -216,54 +239,85 @@ export default async function HistoricalGamePage({
 
       <CollapsibleSection title="Settlement" icon={<ArrowRightSquare size={18} className="text-[#39FF14]"/>} defaultOpen={false} className="mt-4">
         <div className="flex flex-col gap-2">
-          {settlements.length > 0 ? (
-            settlements.map((s, i) => (
-              <div
-                key={i}
-                className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
-              >
-                {/* Top row on mobile, left side on tablet+: avatar + name + total.
-                    The total moves up here on mobile so it sits next to the
-                    name rather than colliding with the breakdown text below. */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
-                  <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                    <p className="text-sm font-bold text-white truncate">{s.from}</p>
-                    <p className="text-xs text-red-400/70 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
-                  </div>
-                  <p className="text-lg font-black text-red-400 tabular-nums shrink-0 sm:hidden">
-                    £{(s.pence / 100).toFixed(2)}
-                  </p>
-                </div>
-
-                {/* Bottom row on mobile (full width), right side on tablet+:
-                    breakdown + the desktop-only total + settle button. The
-                    breakdown gets its own row on phones so "Poker £X + Food £Y"
-                    no longer overlaps the "owes Toby" caption to its left. */}
-                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                  {(s.pokerPence > 0 || s.foodPence > 0) && (
-                    <p className="text-xs text-white/70 tabular-nums">
-                      {s.pokerPence > 0 && s.foodPence > 0
-                        ? `Poker £${(s.pokerPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
-                        : s.pokerPence > 0
-                          ? `Poker £${(s.pokerPence / 100).toFixed(2)}`
-                          : `Food £${(s.foodPence / 100).toFixed(2)}`}
-                    </p>
-                  )}
-                  <p className="text-lg font-black text-red-400 tabular-nums hidden sm:block">
-                    £{(s.pence / 100).toFixed(2)}
-                  </p>
-                  <SettlementSettleButton
-                    gameId={game.id}
-                    playerName={s.from}
-                    isAdmin={userIsAdmin}
-                  />
-                </div>
-              </div>
-            ))
-          ) : (
+          {settlements.length === 0 && payouts.length === 0 && (
             <p className="text-sm text-white/40 py-4 text-center">No settlement required</p>
           )}
+
+          {settlements.map((s, i) => (
+            <div
+              key={`owe-${i}`}
+              className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
+                <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                  <p className="text-sm font-bold text-white truncate">{s.from}</p>
+                  <p className="text-xs text-red-400/70 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
+                </div>
+                <p className="text-lg font-black text-red-400 tabular-nums shrink-0 sm:hidden">
+                  £{(s.pence / 100).toFixed(2)}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                {(s.pokerPence > 0 || s.foodPence > 0) && (
+                  <p className="text-xs text-white/70 tabular-nums">
+                    {s.pokerPence > 0 && s.foodPence > 0
+                      ? `Poker £${(s.pokerPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
+                      : s.pokerPence > 0
+                        ? `Poker £${(s.pokerPence / 100).toFixed(2)}`
+                        : `Food £${(s.foodPence / 100).toFixed(2)}`}
+                  </p>
+                )}
+                <p className="text-lg font-black text-red-400 tabular-nums hidden sm:block">
+                  £{(s.pence / 100).toFixed(2)}
+                </p>
+                <SettlementSettleButton
+                  gameId={game.id}
+                  playerName={s.from}
+                  isAdmin={userIsAdmin}
+                  initialSettled={settledPlayers.has(s.from.toLowerCase())}
+                />
+              </div>
+            </div>
+          ))}
+
+          {payouts.map((p, i) => (
+            <div
+              key={`pay-${i}`}
+              className="bg-black/40 border border-[#39FF14]/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
+                <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                  <p className="text-sm font-bold text-white truncate">{p.to}</p>
+                  <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
+                </div>
+                <p className="text-lg font-black text-[#39FF14] tabular-nums shrink-0 sm:hidden">
+                  £{(p.pence / 100).toFixed(2)}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                {p.pokerPence > 0 && (
+                  <p className="text-xs text-white/70 tabular-nums">
+                    {p.foodPence > 0
+                      ? `Won £${(p.pokerPence / 100).toFixed(2)} − Food £${(p.foodPence / 100).toFixed(2)}`
+                      : `Won £${(p.pokerPence / 100).toFixed(2)}`}
+                  </p>
+                )}
+                <p className="text-lg font-black text-[#39FF14] tabular-nums hidden sm:block">
+                  £{(p.pence / 100).toFixed(2)}
+                </p>
+                <SettlementSettleButton
+                  gameId={game.id}
+                  playerName={p.to}
+                  isAdmin={userIsAdmin}
+                  initialSettled={settledPlayers.has(p.to.toLowerCase())}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </CollapsibleSection>
     </main>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { BadgeCheck, Edit2, Trash2, X, RotateCcw } from "lucide-react";
-import { isGameSettled, deleteGame, getGamePatch, patchGame, clearGameSettlement } from "@/lib/local-store";
+import { deleteGame, getGamePatch, patchGame } from "@/lib/local-store";
+import { clearGameSettlementDb } from "@/lib/settlements-db";
 import { useIsMounted } from "@/lib/use-hydration";
 import { useRouter } from "next/navigation";
 import { HistoricalGame } from "@/lib/historical-games";
@@ -14,22 +15,31 @@ type Props = {
   isAdmin: boolean;
   game: HistoricalGame;
   /**
-   * Names of every player who owes money for this game (poker loss + food).
-   * The "Settled" badge lights up only when every one of them has been
-   * ticked off via the per-player buttons in the settlement section.
+   * Names of every player whose settlement needs ticking off (owers + payout
+   * recipients). The "Settled" badge lights up only when every one of them
+   * has been marked paid.
    */
   requiredPayers: string[];
   /**
-   * Bumps when a per-player toggle fires elsewhere on the page so this
-   * component re-checks the derived settled status without a full reload.
+   * Lower-cased player names already marked paid in Supabase, server-fetched
+   * so non-admins see the correct state on first paint.
    */
-  settledTick?: number;
+  initialSettledKeys: string[];
 };
 
-export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, settledTick }: Props) {
+export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, initialSettledKeys }: Props) {
   const isMounted = useIsMounted();
   const router = useRouter();
-  const [settled, setSettled] = useState(false);
+
+  const requiredKeys = useMemo(
+    () => requiredPayers.map((p) => p.toLowerCase()),
+    [requiredPayers],
+  );
+  const [settledKeys, setSettledKeys] = useState<Set<string>>(
+    () => new Set(initialSettledKeys),
+  );
+  const settled = requiredKeys.length > 0 && requiredKeys.every((k) => settledKeys.has(k));
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -43,7 +53,6 @@ export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, 
 
   useEffect(() => {
     if (isMounted) {
-      setSettled(isGameSettled(gameId, requiredPayers));
       const patch = getGamePatch(gameId);
       if (patch) {
         setEditData(prev => ({
@@ -56,17 +65,22 @@ export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, 
         }));
       }
     }
-  }, [isMounted, gameId, requiredPayers, settledTick]);
+  }, [isMounted, gameId]);
 
-  // Re-derive when any per-player toggle on this game fires elsewhere on
-  // the page. The settled status flips to true automatically once the last
-  // outstanding player gets ticked off.
+  // Re-derive when any per-player toggle on this game fires elsewhere on the
+  // page. Empty playerName signals a game-wide reset.
   useEffect(() => {
     return onSettlementToggled((detail) => {
       if (detail.gameId !== gameId) return;
-      setSettled(isGameSettled(gameId, requiredPayers));
+      setSettledKeys((prev) => {
+        if (detail.playerName === "") return new Set();
+        const next = new Set(prev);
+        const key = detail.playerName.toLowerCase();
+        if (detail.settled) next.add(key); else next.delete(key);
+        return next;
+      });
     });
-  }, [gameId, requiredPayers]);
+  }, [gameId]);
 
   const handleSaveEdit = () => {
     patchGame(gameId, editData);
@@ -90,10 +104,15 @@ export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, 
             Settled
             {isAdmin && (
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!confirm("Reset this game's settlement? Everyone will be marked as unpaid again.")) return;
-                  clearGameSettlement(gameId);
-                  setSettled(false);
+                  try {
+                    await clearGameSettlementDb(gameId);
+                  } catch (err) {
+                    console.error("[settlement] reset failed", err);
+                    return;
+                  }
+                  setSettledKeys(new Set());
                   // Empty playerName signals a game-wide clear — every per-player
                   // button on the page re-reads its state in response.
                   emitSettlementToggled({ gameId, playerName: "", settled: false });

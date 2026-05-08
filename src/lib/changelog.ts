@@ -27,6 +27,20 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.6.2",
+    date: "May 8, 2026",
+    summary: "Settlement clarity — winners get a payout row, food nets against winnings, paid status visible to everyone",
+    items: [
+      { category: "Settlement", type: "fix", text: "Winners' food cost is now absorbed by their winnings — if you walked away up more than your food share, you no longer appear as 'owing' anything" },
+      { category: "Settlement", type: "feature", text: "Settlement section now shows a green row per winner with how much they're owed back from the pot (e.g. 'Won £25 − Food £11.80')" },
+      { category: "Settlement", type: "improvement", text: "Game only flips to 'Settled' once both directions are ticked — every loser has paid AND every winner has been paid out" },
+      { category: "Settlement", type: "fix", text: "Paid / Owing badges are now visible to every player, not just the admin — shared state lives in Supabase instead of the admin's browser" },
+      { category: "Settlement", type: "improvement", text: "Mark Paid button shows a spinner while the toggle is in flight and reverts on failure (e.g. lost connection)" },
+      { category: "Settlement", type: "breaking", text: "Existing localStorage 'paid' marks were not migrated — admin will need to re-tick any games marked paid before this update", adminOnly: true },
+      { category: "Settlement", type: "feature", text: "New game_settlements Supabase table backs paid state, with admin-only write RLS as defence-in-depth", adminOnly: true },
+    ],
+  },
+  {
     version: "1.6.1",
     date: "May 7, 2026",
     summary: "Mobile polish pass — readable winners, breathable layouts, fewer mystery buttons",
