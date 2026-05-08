@@ -27,6 +27,17 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.6.5",
+    date: "May 8, 2026",
+    summary: "Admin-only Site Activity panel — see who's visiting and when",
+    items: [
+      { category: "Admin", type: "feature", text: "New Site Activity panel for admins: a grouped list of every visitor (signed-in or anonymous) with last-seen timestamp and visit count. Click a visitor to see their full page-by-page history.", adminOnly: true },
+      { category: "Admin", type: "feature", text: "Site Activity entry point lives next to Account Settings on the admin's own profile and is invisible to everyone else.", adminOnly: true },
+      { category: "Admin", type: "feature", text: "Anonymous visitors are tracked via a long-lived cookie so their sessions group into a single visitor entry instead of fragmenting per-page.", adminOnly: true },
+      { category: "Admin", type: "improvement", text: "Visit logging is rate-limited to once per path per visitor per minute so a heavy navigation session doesn't spam the table.", adminOnly: true },
+    ],
+  },
+  {
     version: "1.6.4",
     date: "May 8, 2026",
     summary: "Profile is your home — picture, name, and settings all in one place",

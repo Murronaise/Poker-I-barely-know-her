@@ -17,6 +17,7 @@ import {
   Crop,
   Swords,
   Settings,
+  Eye,
 } from "lucide-react";
 import {
   AreaChart,
@@ -70,9 +71,11 @@ export default function ProfilePage({
   // logged-in viewer's own profile. `canEdit` gates the avatar upload + frame
   // controls so randoms can't overwrite someone else's picture (only the
   // owner of the linked account or an admin should be able to change it).
+  // `iAmAdmin` separately gates admin-only entry points (e.g. Site Activity).
   const [isVerified, setIsVerified] = useState(false);
   const [isMine, setIsMine] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
+  const [iAmAdmin, setIAmAdmin] = useState(false);
 
   // Fetch existing avatar on mount
   useEffect(() => {
@@ -128,6 +131,7 @@ export default function ProfilePage({
       }
       if (cancelled) return;
       setCanEdit(mine || admin);
+      setIAmAdmin(admin);
     };
     check();
     return () => { cancelled = true; };
@@ -440,6 +444,15 @@ export default function ProfilePage({
                     className="inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 transition-colors"
                   >
                     <Settings size={14} aria-hidden="true" /> Account Settings
+                  </Link>
+                )}
+                {isMine && iAmAdmin && (
+                  <Link
+                    href="/admin/visits"
+                    className="inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 transition-colors"
+                    title="Admin only — see who's visited the site"
+                  >
+                    <Eye size={14} aria-hidden="true" /> Site Activity
                   </Link>
                 )}
               </div>
