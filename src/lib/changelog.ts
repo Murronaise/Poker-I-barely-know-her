@@ -27,6 +27,16 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.6.6",
+    date: "May 8, 2026",
+    summary: "Single end-of-night transfer per player — no more upfront buy-in transfers",
+    items: [
+      { category: "Settlement", type: "breaking", text: "Buy-ins are no longer transferred upfront during the game. Track rebuys in-app as normal — at the end you'll have one number per player, settled with Toby in a single transfer either way." },
+      { category: "Settlement", type: "improvement", text: "Each settlement row total = Cash-out − Buy-in − Food. Negative means you pay Toby, positive means Toby pays you. Same number that's been in the breakdown all along, just now it's the headline figure." },
+      { category: "Settlement", type: "improvement", text: "One row per player on the settlement page — no more split owing/receiving rows for the same person. Cleaner to scan and one Mark Paid tick per player covers the whole night." },
+    ],
+  },
+  {
     version: "1.6.5",
     date: "May 8, 2026",
     summary: "Admin-only Site Activity panel — see who's visiting and when",

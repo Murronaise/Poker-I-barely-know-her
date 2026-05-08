@@ -52,11 +52,10 @@ export default async function HistoricalGamePage({
   const totalBuyIn = game.players.reduce((s, p) => s + p.buyIn, 0);
   const totalFood = game.players.reduce((s, p) => s + p.food, 0);
 
-  // End-of-game net settlement. Buy-ins and rebuys are transferred to admin
-  // upfront via the live tracker, so by settlement time only two flows
-  // remain outstanding per player: food owed to admin, and cash-out owed
-  // back from admin. Net per player = cashOut − food. Buy-in is shown in
-  // the breakdown for reference but doesn't factor into the total.
+  // Single end-of-game settlement. Each player's net = cashOut − buyIn − food.
+  // Positive ⇒ admin pays them; negative ⇒ they pay admin. One transaction
+  // per player, settles the entire night in a single transfer either way.
+  // Rebuys are already folded into buyIn by the live tracker.
   const nonAdminPlayers = game.players.filter((p) => p.name !== FOOD_PAYER);
 
   const playerNets = nonAdminPlayers
@@ -65,9 +64,9 @@ export default async function HistoricalGamePage({
       buyIn: p.buyIn,
       cashOut: p.cashOut,
       food: p.food,
-      net: p.cashOut - p.food,
+      net: p.cashOut - p.buyIn - p.food,
     }))
-    .filter((p) => Math.abs(p.net) > 0.005 || p.buyIn > 0.005);
+    .filter((p) => Math.abs(p.net) > 0.005 || p.buyIn > 0.005 || p.food > 0.005);
 
   const settlements = playerNets
     .filter((p) => p.net < -0.005)
