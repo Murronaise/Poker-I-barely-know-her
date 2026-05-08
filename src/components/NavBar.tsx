@@ -9,6 +9,7 @@ import { setLiveGameId, useLiveGameId } from "@/lib/live-game-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { onProfileUpdated } from "@/lib/profile-events";
 import { isAdmin as isAdminEmail } from "@/lib/auth";
+import { profileSlug } from "@/lib/registered-players";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
 const links = [
@@ -294,12 +295,12 @@ export default function NavBar() {
                           </div>
                         </div>
                         <Link
-                          href="/account"
+                          href={playerName ? `/profile/${profileSlug(playerName)}` : "/account"}
                           className="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-white/80 hover:text-white hover:bg-white/5 transition-colors"
                           onClick={() => setShowUserMenu(false)}
                         >
                           <UserCircle size={14} />
-                          Account Settings
+                          Profile
                         </Link>
                         <div className="border-t border-white/10" />
                         <button
@@ -353,7 +354,7 @@ export default function NavBar() {
               {!loading && user && (
                 <div className="flex items-center justify-between gap-2 px-2 -mx-2 py-2 mb-1 rounded-lg bg-white/5 border border-white/10">
                   <Link
-                    href="/account"
+                    href={playerName ? `/profile/${profileSlug(playerName)}` : "/account"}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex-1 flex items-center gap-3 min-h-11"
                   >

@@ -29,10 +29,12 @@ export const changelog: ChangelogEntry[] = [
   {
     version: "1.6.4",
     date: "May 8, 2026",
-    summary: "Linked players can finally change their profile picture",
+    summary: "Profile is your home — picture, name, and settings all in one place",
     items: [
       { category: "Profile", type: "fix", text: "Profile-picture upload + frame controls now actually appear on your own profile once your account is linked to a player name — auth check was looking in the wrong storage and never saw your session" },
-      { category: "Profile", type: "improvement", text: "Failed uploads now log the underlying Supabase error to the console instead of silently swallowing it" },
+      { category: "Profile", type: "improvement", text: "Navbar dropdown 'Account Settings' is now 'Profile' and takes you straight to your own profile page (where the avatar editor lives)" },
+      { category: "Profile", type: "improvement", text: "Account Settings (player name, password, logout) reachable via a button on your profile when you're viewing your own page" },
+      { category: "Profile", type: "improvement", text: "Failed avatar uploads now log the underlying Supabase error to the console instead of silently swallowing it" },
     ],
   },
   {

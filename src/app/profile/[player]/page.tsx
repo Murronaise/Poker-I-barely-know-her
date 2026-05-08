@@ -16,6 +16,7 @@ import {
   X,
   Crop,
   Swords,
+  Settings,
 } from "lucide-react";
 import {
   AreaChart,
@@ -425,13 +426,23 @@ export default function ProfilePage({
               <span>{playerSessions.length} sessions tracked</span>
             </div>
             {canEdit && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleAvatarClick(); }}
-                className="mt-3 inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
-              >
-                <Camera size={14} aria-hidden="true" /> {avatarUrl ? "Change Picture" : "Upload Picture"}
-              </button>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleAvatarClick(); }}
+                  className="inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#39FF14]/40 text-white/70 hover:text-[#39FF14] transition-colors"
+                >
+                  <Camera size={14} aria-hidden="true" /> {avatarUrl ? "Change Picture" : "Upload Picture"}
+                </button>
+                {isMine && (
+                  <Link
+                    href="/account"
+                    className="inline-flex items-center gap-2 min-h-11 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 transition-colors"
+                  >
+                    <Settings size={14} aria-hidden="true" /> Account Settings
+                  </Link>
+                )}
+              </div>
             )}
           </div>
 
