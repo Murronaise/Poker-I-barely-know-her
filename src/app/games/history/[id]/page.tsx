@@ -52,44 +52,40 @@ export default async function HistoricalGamePage({
   const totalBuyIn = game.players.reduce((s, p) => s + p.buyIn, 0);
   const totalFood = game.players.reduce((s, p) => s + p.food, 0);
 
-  // Admin-collects-all model. For each non-admin player:
-  //   net = pokerNet − food   (positive ⇒ admin pays them; negative ⇒ they pay admin)
-  // A winner's winnings absorb their food first; if winnings cover food the
-  // player drops out of the "owing" list and lands in the "receiving" list with
-  // the remainder. Losers owe poker loss + food in full.
-  const playerNets = game.players
-    .filter((p) => p.name !== FOOD_PAYER)
-    .map((p) => {
-      const pokerNet = p.cashOut - p.buyIn;
-      return { name: p.name, pokerNet, food: p.food, net: pokerNet - p.food };
-    });
+  // Gross-flow settlement. Buy-ins and rebuys are transferred to the admin
+  // upfront during the game (via the live tracker's rebuy/buy-in flow), so
+  // the settlement page is a record of every leg of money movement rather
+  // than a netted figure:
+  //   * Owing row  = full buy-in + food owed to admin
+  //   * Receiving row = full cash-out admin pays back
+  // Net of the two equals the previous single-row figure; the gross display
+  // makes the actual transfers traceable.
+  const nonAdminPlayers = game.players.filter((p) => p.name !== FOOD_PAYER);
 
-  const settlements = playerNets
-    .filter((p) => p.net < -0.005)
+  const settlements = nonAdminPlayers
+    .filter((p) => p.buyIn > 0.005 || p.food > 0.005)
     .map((p) => ({
       name: p.name,
-      pokerLoss: Math.max(0, -p.pokerNet),
-      foodSpend: p.pokerNet > 0 ? Math.max(0, p.food - p.pokerNet) : p.food,
-      totalOwed: -p.net,
+      buyIn: p.buyIn,
+      food: p.food,
+      total: p.buyIn + p.food,
     }))
-    .sort((a, b) => b.totalOwed - a.totalOwed)
+    .sort((a, b) => b.total - a.total)
     .map((p) => ({
       from: p.name,
       to: FOOD_PAYER,
-      pence: Math.round(p.totalOwed * 100),
-      pokerPence: Math.round(p.pokerLoss * 100),
-      foodPence: Math.round(p.foodSpend * 100),
+      pence: Math.round(p.total * 100),
+      buyInPence: Math.round(p.buyIn * 100),
+      foodPence: Math.round(p.food * 100),
     }));
 
-  const payouts = playerNets
-    .filter((p) => p.net > 0.005)
-    .sort((a, b) => b.net - a.net)
+  const payouts = nonAdminPlayers
+    .filter((p) => p.cashOut > 0.005)
+    .sort((a, b) => b.cashOut - a.cashOut)
     .map((p) => ({
       to: p.name,
       from: FOOD_PAYER,
-      pence: Math.round(p.net * 100),
-      pokerPence: Math.round(Math.max(0, p.pokerNet) * 100),
-      foodPence: Math.round(p.food * 100),
+      pence: Math.round(p.cashOut * 100),
     }));
 
   const facts = [
@@ -260,12 +256,12 @@ export default async function HistoricalGamePage({
               </div>
 
               <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                {(s.pokerPence > 0 || s.foodPence > 0) && (
+                {(s.buyInPence > 0 || s.foodPence > 0) && (
                   <p className="text-xs text-white/70 tabular-nums">
-                    {s.pokerPence > 0 && s.foodPence > 0
-                      ? `Poker £${(s.pokerPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
-                      : s.pokerPence > 0
-                        ? `Poker £${(s.pokerPence / 100).toFixed(2)}`
+                    {s.buyInPence > 0 && s.foodPence > 0
+                      ? `Buy-in £${(s.buyInPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
+                      : s.buyInPence > 0
+                        ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}`
                         : `Food £${(s.foodPence / 100).toFixed(2)}`}
                   </p>
                 )}
@@ -299,13 +295,9 @@ export default async function HistoricalGamePage({
               </div>
 
               <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                {p.pokerPence > 0 && (
-                  <p className="text-xs text-white/70 tabular-nums">
-                    {p.foodPence > 0
-                      ? `Won £${(p.pokerPence / 100).toFixed(2)} − Food £${(p.foodPence / 100).toFixed(2)}`
-                      : `Won £${(p.pokerPence / 100).toFixed(2)}`}
-                  </p>
-                )}
+                <p className="text-xs text-white/70 tabular-nums">
+                  Cash-out £{(p.pence / 100).toFixed(2)}
+                </p>
                 <p className="text-lg font-black text-[#39FF14] tabular-nums hidden sm:block">
                   £{(p.pence / 100).toFixed(2)}
                 </p>
