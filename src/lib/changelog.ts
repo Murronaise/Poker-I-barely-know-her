@@ -27,6 +27,15 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.6.4",
+    date: "May 8, 2026",
+    summary: "Linked players can finally change their profile picture",
+    items: [
+      { category: "Profile", type: "fix", text: "Profile-picture upload + frame controls now actually appear on your own profile once your account is linked to a player name — auth check was looking in the wrong storage and never saw your session" },
+      { category: "Profile", type: "improvement", text: "Failed uploads now log the underlying Supabase error to the console instead of silently swallowing it" },
+    ],
+  },
+  {
     version: "1.6.3",
     date: "May 8, 2026",
     summary: "Settlement reflects upfront buy-in transfers — only food and cash-out are settled at game end",

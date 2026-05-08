@@ -32,6 +32,7 @@ import PlayerAvatar from "@/components/PlayerAvatar";
 import AvatarPositioner from "@/components/AvatarPositioner";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import { supabase } from "@/lib/supabase";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { historicalGames } from "@/lib/historical-games";
 import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
@@ -94,13 +95,17 @@ export default function ProfilePage({
 
   // Check if any registered user owns this player_name (case-insensitive),
   // whether the viewer themselves owns it, and whether the viewer is admin
-  // (admins keep edit rights for moderation).
+  // (admins keep edit rights for moderation). Uses the SSR-aware browser
+  // client for auth.getUser() so the cookie-stored session is visible — the
+  // plain `supabase` client reads sessions from localStorage and would
+  // return a null user, leaving canEdit stuck at false.
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
+      const sb = createSupabaseBrowserClient();
       const [{ data: matches }, { data: meResp }] = await Promise.all([
         supabase.from("users").select("email, player_name").ilike("player_name", playerName),
-        supabase.auth.getUser(),
+        sb.auth.getUser(),
       ]);
       if (cancelled) return;
       const ownerEmail = matches?.[0]?.email ?? null;
@@ -171,20 +176,29 @@ export default function ProfilePage({
     try {
       setIsUploading(true);
 
+      // Use the SSR-aware client so the upload + upsert carry the user's
+      // auth cookie. Storage RLS and the players-table policy reject
+      // unauthenticated writes, which is what was happening with the plain
+      // module client.
+      const sb = createSupabaseBrowserClient();
       const fileExt = file.name.split(".").pop();
       const fileName = `${playerName.replace(/ /g, "-").toLowerCase()}-${Math.random()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await sb.storage
         .from("avatars")
         .upload(fileName, file);
 
-      if (!uploadError) {
-        const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
-        setAvatarUrl(data.publicUrl);
-        await supabase
-          .from("players")
-          .upsert({ name: playerName, avatar_url: data.publicUrl }, { onConflict: "name" });
+      if (uploadError) {
+        console.error("Error uploading avatar:", uploadError);
+        return;
       }
+
+      const { data } = sb.storage.from("avatars").getPublicUrl(fileName);
+      setAvatarUrl(data.publicUrl);
+      const { error: upsertError } = await sb
+        .from("players")
+        .upsert({ name: playerName, avatar_url: data.publicUrl }, { onConflict: "name" });
+      if (upsertError) console.error("Error saving avatar URL:", upsertError);
     } catch (error) {
       console.error("Error uploading avatar:", error);
     } finally {
