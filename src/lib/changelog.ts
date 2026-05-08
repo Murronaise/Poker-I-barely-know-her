@@ -29,12 +29,11 @@ export const changelog: ChangelogEntry[] = [
   {
     version: "1.6.3",
     date: "May 8, 2026",
-    summary: "Settlement now mirrors actual money movement — full buy-ins and cash-outs, not just net",
+    summary: "Settlement reflects upfront buy-in transfers — only food and cash-out are settled at game end",
     items: [
-      { category: "Settlement", type: "breaking", text: "Buy-ins (and rebuys) are now transferred to Toby up front during the game via the existing rebuy flow — settlement records the full transfers rather than just net winnings/losses" },
-      { category: "Settlement", type: "feature", text: "Owing rows now show full Buy-in + Food (e.g. £100 + £11.80 = £111.80), so you can match it against what you transferred during the game" },
-      { category: "Settlement", type: "feature", text: "Receiving rows now show full Cash-out, not just profit — every winner gets a row showing exactly what Toby pays back" },
-      { category: "Settlement", type: "improvement", text: "Each player can appear in both lists at once: one row for what they sent in, one for what they get back, so every leg of the money flow is visible" },
+      { category: "Settlement", type: "breaking", text: "Buy-ins (and rebuys) are now transferred to Toby up front during the game via the existing rebuy flow — by game end the only outstanding amounts are food owed to Toby and cash-out owed back to you" },
+      { category: "Settlement", type: "improvement", text: "Settlement total per player is now Cash-out − Food (since buy-in is already paid). One row per player: receive if cash-out beats food, owe the difference if not" },
+      { category: "Settlement", type: "improvement", text: "Row breakdown shows Buy-in · Cash-out · Food so the upfront transfer stays visible alongside what's still pending" },
     ],
   },
   {

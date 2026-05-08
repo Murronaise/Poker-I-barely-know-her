@@ -52,40 +52,45 @@ export default async function HistoricalGamePage({
   const totalBuyIn = game.players.reduce((s, p) => s + p.buyIn, 0);
   const totalFood = game.players.reduce((s, p) => s + p.food, 0);
 
-  // Gross-flow settlement. Buy-ins and rebuys are transferred to the admin
-  // upfront during the game (via the live tracker's rebuy/buy-in flow), so
-  // the settlement page is a record of every leg of money movement rather
-  // than a netted figure:
-  //   * Owing row  = full buy-in + food owed to admin
-  //   * Receiving row = full cash-out admin pays back
-  // Net of the two equals the previous single-row figure; the gross display
-  // makes the actual transfers traceable.
+  // End-of-game net settlement. Buy-ins and rebuys are transferred to admin
+  // upfront via the live tracker, so by settlement time only two flows
+  // remain outstanding per player: food owed to admin, and cash-out owed
+  // back from admin. Net per player = cashOut − food. Buy-in is shown in
+  // the breakdown for reference but doesn't factor into the total.
   const nonAdminPlayers = game.players.filter((p) => p.name !== FOOD_PAYER);
 
-  const settlements = nonAdminPlayers
-    .filter((p) => p.buyIn > 0.005 || p.food > 0.005)
+  const playerNets = nonAdminPlayers
     .map((p) => ({
       name: p.name,
       buyIn: p.buyIn,
+      cashOut: p.cashOut,
       food: p.food,
-      total: p.buyIn + p.food,
+      net: p.cashOut - p.food,
     }))
-    .sort((a, b) => b.total - a.total)
+    .filter((p) => Math.abs(p.net) > 0.005 || p.buyIn > 0.005);
+
+  const settlements = playerNets
+    .filter((p) => p.net < -0.005)
+    .sort((a, b) => a.net - b.net)
     .map((p) => ({
       from: p.name,
       to: FOOD_PAYER,
-      pence: Math.round(p.total * 100),
+      pence: Math.round(-p.net * 100),
       buyInPence: Math.round(p.buyIn * 100),
+      cashOutPence: Math.round(p.cashOut * 100),
       foodPence: Math.round(p.food * 100),
     }));
 
-  const payouts = nonAdminPlayers
-    .filter((p) => p.cashOut > 0.005)
-    .sort((a, b) => b.cashOut - a.cashOut)
+  const payouts = playerNets
+    .filter((p) => p.net > 0.005)
+    .sort((a, b) => b.net - a.net)
     .map((p) => ({
       to: p.name,
       from: FOOD_PAYER,
-      pence: Math.round(p.cashOut * 100),
+      pence: Math.round(p.net * 100),
+      buyInPence: Math.round(p.buyIn * 100),
+      cashOutPence: Math.round(p.cashOut * 100),
+      foodPence: Math.round(p.food * 100),
     }));
 
   const facts = [
@@ -256,15 +261,13 @@ export default async function HistoricalGamePage({
               </div>
 
               <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                {(s.buyInPence > 0 || s.foodPence > 0) && (
-                  <p className="text-xs text-white/70 tabular-nums">
-                    {s.buyInPence > 0 && s.foodPence > 0
-                      ? `Buy-in £${(s.buyInPence / 100).toFixed(2)} + Food £${(s.foodPence / 100).toFixed(2)}`
-                      : s.buyInPence > 0
-                        ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}`
-                        : `Food £${(s.foodPence / 100).toFixed(2)}`}
-                  </p>
-                )}
+                <p className="text-xs text-white/70 tabular-nums">
+                  {[
+                    s.buyInPence > 0 ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}` : null,
+                    s.cashOutPence > 0 ? `Cash-out £${(s.cashOutPence / 100).toFixed(2)}` : null,
+                    s.foodPence > 0 ? `Food £${(s.foodPence / 100).toFixed(2)}` : null,
+                  ].filter(Boolean).join(" · ")}
+                </p>
                 <p className="text-lg font-black text-red-400 tabular-nums hidden sm:block">
                   £{(s.pence / 100).toFixed(2)}
                 </p>
@@ -296,7 +299,11 @@ export default async function HistoricalGamePage({
 
               <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                 <p className="text-xs text-white/70 tabular-nums">
-                  Cash-out £{(p.pence / 100).toFixed(2)}
+                  {[
+                    p.buyInPence > 0 ? `Buy-in £${(p.buyInPence / 100).toFixed(2)}` : null,
+                    p.cashOutPence > 0 ? `Cash-out £${(p.cashOutPence / 100).toFixed(2)}` : null,
+                    p.foodPence > 0 ? `Food £${(p.foodPence / 100).toFixed(2)}` : null,
+                  ].filter(Boolean).join(" · ")}
                 </p>
                 <p className="text-lg font-black text-[#39FF14] tabular-nums hidden sm:block">
                   £{(p.pence / 100).toFixed(2)}
