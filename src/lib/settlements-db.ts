@@ -6,7 +6,7 @@
 // button; RLS rejects non-admins even if the UI guard is bypassed.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
+import { createSupabaseBrowserClient } from "./supabase/client";
 
 const TABLE = "game_settlements";
 
@@ -25,17 +25,21 @@ export async function fetchSettledPlayers(
 
 /**
  * Toggle a player's settled status. Returns the new boolean (true = settled).
- * Uses the module-level browser client so the call carries the admin's auth
- * cookie — RLS will reject the write for any non-admin user.
+ *
+ * Uses the SSR-aware browser client so the request carries the admin's auth
+ * cookie. The plain `supabase` client reads its session from localStorage,
+ * which is empty under our cookie-based auth setup — using it here would
+ * send the request unauthenticated and trip a 401 from RLS.
  */
 export async function togglePlayerSettledDb(
   gameId: string,
   playerName: string,
   currentlySettled: boolean,
 ): Promise<boolean> {
+  const sb = createSupabaseBrowserClient();
   const playerKey = playerName.toLowerCase();
   if (currentlySettled) {
-    const { error } = await supabase
+    const { error } = await sb
       .from(TABLE)
       .delete()
       .eq("game_id", gameId)
@@ -43,8 +47,8 @@ export async function togglePlayerSettledDb(
     if (error) throw error;
     return false;
   }
-  const { data: { user } } = await supabase.auth.getUser();
-  const { error } = await supabase.from(TABLE).insert({
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from(TABLE).insert({
     game_id: gameId,
     player_key: playerKey,
     player_name: playerName,
@@ -56,7 +60,8 @@ export async function togglePlayerSettledDb(
 
 /** Wipe every per-player tick for a game. Admin-only via RLS. */
 export async function clearGameSettlementDb(gameId: string): Promise<void> {
-  const { error } = await supabase
+  const sb = createSupabaseBrowserClient();
+  const { error } = await sb
     .from(TABLE)
     .delete()
     .eq("game_id", gameId);
