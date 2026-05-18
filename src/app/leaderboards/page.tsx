@@ -14,9 +14,11 @@ export default async function LeaderboardsPage({
   searchParams: Promise<{ category?: string }>;
 }) {
   const resolvedParams = await searchParams;
-  const requested = resolvedParams.category || "overall-leader";
+  // Landing defaults to the chart-only "Overall Winners" view; Money
+  // Printer and the rest are reachable via the category switcher.
+  const requested = resolvedParams.category || "overall-winners";
   const category =
-    leaderboardCategories[requested] ?? leaderboardCategories["overall-leader"];
+    leaderboardCategories[requested] ?? leaderboardCategories["overall-winners"];
 
   const avatarMap: Record<string, string> = {};
   try {
@@ -31,12 +33,7 @@ export default async function LeaderboardsPage({
   }
 
   const podium = category.rows.slice(0, 3);
-  // Overall-leader replaces the podium with the chart, so the table below
-  // needs the full ranking (1-N), not just rank 4+. Other categories keep
-  // the podium → start the table at rank 4.
-  const rest = category.slug === "overall-leader"
-    ? category.rows
-    : category.rows.slice(3);
+  const rest = category.rows.slice(3);
 
   // Render podium in visual order (2nd, 1st, 3rd) instead of using CSS `order`.
   // CSS order shuffles paint but leaves DOM at 1-2-3, which means tab order
@@ -100,12 +97,12 @@ export default async function LeaderboardsPage({
         </div>
       </nav>
 
-      {/* Overall-leader landing: lead with the dashboard's chip-stack chart
-          rather than a top-3 podium. The chart shows every player at once
-          and reads better than a podium that hides half the roster. Other
-          categories keep the podium because their metrics (win-rate ties,
-          food spend, etc.) don't translate to a single comparable axis. */}
-      {category.slug === "overall-leader" ? (
+      {/* "Overall Winners" landing: lead with the dashboard's chip-stack
+          chart instead of a podium so every player is visible at once.
+          The named categories (Money Printer, The Pit, etc.) keep their
+          podium + ranked-table layout because their metrics don't share
+          a single comparable axis. */}
+      {category.slug === "overall-winners" ? (
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-3 md:p-5 mb-4 shrink-0 flex flex-col">
           <div className="flex items-end justify-between mb-3 gap-3 shrink-0">
             <div>
@@ -137,7 +134,7 @@ export default async function LeaderboardsPage({
       {/* Top 3 Podium — DOM is rendered in *visual* order (2-1-3) so tab order
           and screen-reader announcement match what's on screen. Extra top
           padding keeps the crown above #1 from overlapping the switcher. */}
-      {category.slug !== "overall-leader" && podiumVisual.length > 0 && (
+      {category.slug !== "overall-winners" && podiumVisual.length > 0 && (
         <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4 mt-6 md:mt-8 items-end shrink-0">
           {podiumVisual.map((row) => {
             const realRank = row.rank;

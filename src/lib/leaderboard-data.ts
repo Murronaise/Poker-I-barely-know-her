@@ -135,7 +135,22 @@ export const leaderboardCategories: Record<string, LeaderboardCategory> = {
   },
 };
 
+// "overall-winners" is the chart-only landing page (see the leaderboards
+// route — it swaps in <LifetimeProfitChart> for this slug). It has no rows
+// because the chart derives its data directly from historicalGames.
+// "overall-leader" / Money Printer is the same data presented as a podium
+// + ranked table, kept alongside so the design system stays consistent
+// across the other named categories.
+leaderboardCategories["overall-winners"] = {
+  slug: "overall-winners",
+  title: "Overall Winners",
+  subtitle: "Lifetime net profit at a glance.",
+  metricLabel: "Profit",
+  rows: [],
+};
+
 export const leaderboardCategoryOrder: string[] = [
+  "overall-winners",
   "overall-leader",
   "the-shark",
   "the-whale",
