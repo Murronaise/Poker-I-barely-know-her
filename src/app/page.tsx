@@ -917,7 +917,7 @@ export default function Dashboard() {
                     router.push(`/leaderboards?category=${metric.categorySlug}`);
                   }
                 }}
-                className="w-[280px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-2xl"
+                className="w-[320px] sm:w-[340px] md:w-[400px] shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 rounded-2xl"
               >
                 <div
                   className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/15 hover:border-white/30 hover:-translate-y-0.5 transition-all duration-300 rounded-2xl p-4 flex flex-col h-full group select-none relative overflow-hidden"
@@ -967,10 +967,12 @@ export default function Dashboard() {
                       />
                     </Link>
                     <div className="min-w-0 flex-1">
-                      <p className="text-base font-bold tracking-tight text-white/80 group-hover:text-white transition-colors truncate">
+                      {/* line-clamp-2 so "Alexander Smith"-length names get a
+                          second line instead of vanishing mid-word. */}
+                      <p className="text-base font-bold tracking-tight text-white/80 group-hover:text-white transition-colors line-clamp-2 leading-tight break-words">
                         {metric.player}
                       </p>
-                      <p className={`text-xl md:text-2xl font-black drop-shadow-md ${metric.valColor} tabular-nums`}>
+                      <p className={`text-xl md:text-2xl font-black drop-shadow-md ${metric.valColor} tabular-nums mt-0.5`}>
                         {metric.value}
                       </p>
                     </div>

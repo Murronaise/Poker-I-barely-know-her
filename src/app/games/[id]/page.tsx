@@ -449,6 +449,155 @@ function ActiveGameContent() {
   const lowTime = timeLeft > 0 && timeLeft < 60;
   const expired = timeLeft === 0;
 
+  // ===================== Mobile Cards (memo) =====================
+  // A per-player card view used on portrait phones. Same handlers as the
+  // table below — inputs, rebuy chips, bust/undo button — laid out for
+  // touch instead of a 7-column scrollable spreadsheet. Tablet+ keeps the
+  // table because it's the right shape on a wide screen.
+  const mobileCards = useMemo(() => {
+    return players.map((p) => {
+      const cashedOut = p.cashOut !== null;
+      const isLeader = chipLeader?.name === p.name && stillIn.length > 1;
+      const net = (p.cashOut ?? 0) - p.buyIn - p.foodSpend;
+      return (
+        <div
+          key={p.name}
+          className={`rounded-xl border p-3 flex flex-col gap-3 transition-colors ${
+            cashedOut
+              ? "bg-black/30 border-white/5 opacity-75"
+              : "bg-white/[0.03] border-white/10"
+          }`}
+        >
+          {/* Header — avatar + name + bust/undo */}
+          <div className="flex items-center gap-3">
+            <PlayerAvatar
+              name={p.name}
+              avatarUrl={p.avatar_url}
+              size={44}
+              className="rounded-full border border-white/10 shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base font-bold truncate">{p.name}</span>
+                {isLeader && (
+                  <Crown
+                    size={12}
+                    className="text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)] shrink-0"
+                  />
+                )}
+              </div>
+              <span className={`text-xs ${cashedOut ? "text-white/40" : "text-[#39FF14]/70"} tabular-nums`}>
+                {cashedOut ? "Cashed out" : `£${p.buyIn.toFixed(2)} in`}
+              </span>
+            </div>
+            {cashedOut ? (
+              <button
+                onClick={() => undoBust(p.name)}
+                title="Undo cash-out"
+                className="inline-flex items-center gap-1 px-3 min-h-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs uppercase tracking-widest border border-red-500/30 transition-colors shrink-0"
+              >
+                <Undo2 size={11} /> Undo
+              </button>
+            ) : (
+              <button
+                onClick={() => bustPlayer(p.name)}
+                title="Mark as busted (cash-out £0)"
+                className="inline-flex items-center gap-1 px-3 min-h-9 rounded-lg bg-white/5 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/30 text-white/60 font-bold text-xs uppercase tracking-widest border border-white/10 transition-colors shrink-0"
+              >
+                <Skull size={11} /> Bust
+              </button>
+            )}
+          </div>
+
+          {/* Money inputs — 3 columns so they line up vertically */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-white/40">Buy-in</span>
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 font-bold text-white/40 text-sm pointer-events-none">£</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={p.buyIn === 0 ? "" : p.buyIn}
+                  onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-[#39FF14] focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14] transition-all text-right tabular-nums"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-white/40">
+                <Pizza size={10} className="text-yellow-400/70" /> Food
+              </span>
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 font-bold text-white/40 text-sm pointer-events-none">£</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={p.foodSpend === 0 ? "" : p.foodSpend}
+                  onChange={(e) => setPlayerInput(p.name, "foodSpend", e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-yellow-400 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all text-right tabular-nums"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-white/40">Cash Out</span>
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 font-bold text-white/40 text-sm pointer-events-none">£</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={p.cashOut === null ? "" : p.cashOut}
+                  onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
+                  placeholder="—"
+                  className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-white focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all text-right tabular-nums"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Rebuy presets + running net */}
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/5">
+            {!cashedOut ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">Rebuy</span>
+                {REBUY_PRESETS.map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => rebuyPlayer(p.name, amt)}
+                    title={`Add £${amt} to buy-in`}
+                    className="inline-flex items-center gap-0.5 text-xs font-bold tracking-wider uppercase px-2.5 py-1.5 min-h-9 rounded-lg bg-[#39FF14]/5 hover:bg-[#39FF14]/15 border border-[#39FF14]/20 hover:border-[#39FF14]/50 text-[#39FF14] transition-colors"
+                  >
+                    <Plus size={9} />
+                    {amt}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="text-[10px] font-bold tracking-widest uppercase text-white/30">
+                — settled —
+              </span>
+            )}
+            <span
+              className={`text-lg font-black tabular-nums shrink-0 ${
+                cashedOut ? (net >= 0 ? "text-[#39FF14]" : "text-red-400") : "text-white/30"
+              }`}
+            >
+              {cashedOut
+                ? `${net >= 0 ? "+" : ""}£${net.toFixed(2)}`
+                : `−£${p.buyIn.toFixed(2)}`}
+            </span>
+          </div>
+        </div>
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, chipLeader?.name, stillIn.length]);
+
   // ===================== Spreadsheet ROW (memo) =====================
   const tableBody = useMemo(() => {
     return players.map((p) => {
@@ -917,7 +1066,11 @@ function ActiveGameContent() {
         </button>
       </aside>
 
-      {/* RIGHT — Spreadsheet */}
+      {/* RIGHT — Player roster
+          Mobile (< md): stacked cards, one per player. Inputs sit in a
+          3-column grid so Buy-in / Food / Cash Out line up the way you'd
+          read them on a sheet of paper.
+          Tablet+ (md:): original spreadsheet table with sticky player col. */}
       <section className="md:flex-1 md:min-h-0 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 border-b border-white/10 flex items-center justify-between shrink-0 bg-black/30">
           <h2 className="text-base md:text-lg font-black tracking-widest uppercase text-white/70">Live Table</h2>
@@ -926,7 +1079,13 @@ function ActiveGameContent() {
           </span>
         </div>
 
-        <div className="md:flex-1 md:min-h-0 overflow-x-auto md:overflow-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden p-3 flex flex-col gap-2 overflow-y-auto">
+          {mobileCards}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block md:flex-1 md:min-h-0 overflow-x-auto md:overflow-auto">
           <table className="w-full min-w-[640px] border-collapse">
             <thead className="sticky top-0 z-20 bg-black/60 backdrop-blur-md">
               <tr className="border-b border-white/10 text-sm font-bold uppercase tracking-widest text-white/40">

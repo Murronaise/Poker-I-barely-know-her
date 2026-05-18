@@ -189,11 +189,12 @@ function Banner({ hit }: { hit: Hit }) {
           <p className="text-xs font-black tracking-widest uppercase text-white/80">{title}</p>
           <p className="text-sm text-white/60 truncate">{subtitle}</p>
         </div>
-        <div className="hidden sm:flex items-center gap-1 text-xs font-bold tracking-widest uppercase text-white/70 shrink-0">
+        {/* Show the CTA label at every width — the lone chevron on mobile was
+            a weak affordance and made the banner feel decorative. */}
+        <div className="flex items-center gap-1 text-[10px] sm:text-xs font-black tracking-widest uppercase text-white/80 shrink-0">
           {cta}
           <ChevronRight size={14} />
         </div>
-        <ChevronRight size={18} className="sm:hidden text-white/40 shrink-0" />
       </Link>
     </motion.div>
   );

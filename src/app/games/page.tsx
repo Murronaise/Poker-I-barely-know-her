@@ -282,8 +282,10 @@ export default function GamesIndexPage() {
                   </div>
                 </div>
 
-                {/* View Details */}
-                <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 group-hover:bg-[#39FF14]/10 group-hover:text-[#39FF14] text-white/60 text-sm font-bold tracking-widest uppercase transition-colors">
+                {/* View Details — bumped to min-h-11 so it clears the 44px
+                    tap-target minimum on mobile. The whole card is also a
+                    Link, so this is reinforcement, not the only affordance. */}
+                <div className="flex items-center justify-center gap-2 px-3 py-2.5 min-h-11 rounded-lg bg-white/5 group-hover:bg-[#39FF14]/10 group-hover:text-[#39FF14] text-white/60 text-sm font-bold tracking-widest uppercase transition-colors">
                   View Details
                   <ChevronRight size={14} className="opacity-70 shrink-0" />
                 </div>

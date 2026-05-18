@@ -153,7 +153,7 @@ export default function GamePhotos({ gameId, players, canUpload }: Props) {
                   disabled={uploadingFor !== null}
                   title={`Attach a photo to ${p.name}`}
                   aria-label={`Attach a photo tagged to ${p.name}`}
-                  className="group relative inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-black/30 hover:bg-cyan-400/15 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="group relative inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1.5 min-h-9 rounded-full bg-black/30 hover:bg-cyan-400/15 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <PlayerAvatar
                     name={p.name}
@@ -177,7 +177,7 @@ export default function GamePhotos({ gameId, players, canUpload }: Props) {
               onClick={() => openPicker(null)}
               disabled={uploadingFor !== null}
               title="Attach a general photo (no player)"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 hover:bg-white/10 border border-white/10 hover:border-white/30 text-white/50 hover:text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-9 rounded-full bg-black/30 hover:bg-white/10 border border-white/10 hover:border-white/30 text-white/50 hover:text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {uploadingFor === "__untagged__" ? (
                 <Loader2 size={11} className="animate-spin" />

@@ -251,65 +251,110 @@ export default async function HistoricalGamePage({
       {/* Settlement table */}
       <CollapsibleSection title="Results" icon={<Crown size={18} className="text-yellow-400"/>} defaultOpen={false}>
         <div className="overflow-hidden flex flex-col">
-          {/* Portrait phones can't fit six columns side by side, so the
-              previous design hid Cash Out + Food behind a md: breakpoint —
-              which meant you couldn't see whose food cost what without an
-              iPad. Wrapping the whole grid in horizontal scroll with a
-              min-width gives every column a fair share of space and the
-              user can pan right to reach the rest. Match the live-game
-              finalized-results pattern that already does this. */}
-          <div className="overflow-x-auto">
-            <div className="min-w-[720px]">
-              <div className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 border-b border-white/10 bg-black/40 text-xs md:text-sm font-bold text-white/40 uppercase tracking-wider shrink-0">
-                <div className="col-span-1 text-center">#</div>
-                <div className="col-span-3">Player</div>
-                <div className="col-span-2 text-right">Buy-in</div>
-                <div className="col-span-2 text-right">Cash Out</div>
-                <div className="col-span-2 text-right">Food</div>
-                <div className="col-span-2 text-right text-[#39FF14]">Profit</div>
-              </div>
+          {/* Two layouts: stacked player-card on phones (no horizontal
+              scroll, every number visible per row) and the original 12-col
+              grid table on tablet+. The horizontal-scroll fallback we tried
+              before kept the data accessible but lost the # / Player
+              columns off-screen the moment you panned right — cards keep
+              every stat tied to its player. */}
 
-              <div className="divide-y divide-white/5">
-                {ranked.map((p, i) => (
-                  <Link
-                    key={p.name}
-                    href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
-                    className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 items-center hover:bg-white/5 transition-colors"
+          {/* ---------- Mobile (< md): stacked cards ---------- */}
+          <div className="flex flex-col divide-y divide-white/5 md:hidden">
+            {ranked.map((p, i) => (
+              <Link
+                key={p.name}
+                href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
+                className="px-4 py-3 hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="w-7 text-center font-black text-white/50 tabular-nums shrink-0">
+                    {i === 0 ? <Crown size={16} className="text-yellow-400 inline" /> : `#${i + 1}`}
+                  </span>
+                  <PlayerAvatar
+                    name={p.name}
+                    avatarUrl={avatarMap[p.name]}
+                    size={40}
+                    className="rounded-full border border-white/10 shrink-0"
+                  />
+                  <span className="flex-1 font-bold text-base truncate min-w-0">{p.name}</span>
+                  <span
+                    className={`text-lg font-black tabular-nums shrink-0 ${
+                      p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
+                    }`}
                   >
+                    {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold tracking-widest uppercase text-white/40">Buy-in</span>
+                    <span className="text-sm font-bold text-white/80 tabular-nums">£{p.buyIn.toFixed(2)}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold tracking-widest uppercase text-white/40">Cash Out</span>
+                    <span className="text-sm font-bold text-white/80 tabular-nums">£{p.cashOut.toFixed(2)}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-white/40">
+                      <Pizza size={10} className="text-yellow-400/60" /> Food
+                    </span>
+                    <span className="text-sm font-bold text-white/80 tabular-nums">£{p.food.toFixed(2)}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* ---------- Tablet+ (md:): original table grid ---------- */}
+          <div className="hidden md:flex md:flex-col">
+            <div className="grid grid-cols-12 gap-3 px-6 py-3 border-b border-white/10 bg-black/40 text-sm font-bold text-white/40 uppercase tracking-wider shrink-0">
+              <div className="col-span-1 text-center">#</div>
+              <div className="col-span-3">Player</div>
+              <div className="col-span-2 text-right">Buy-in</div>
+              <div className="col-span-2 text-right">Cash Out</div>
+              <div className="col-span-2 text-right">Food</div>
+              <div className="col-span-2 text-right text-[#39FF14]">Profit</div>
+            </div>
+            <div className="divide-y divide-white/5">
+              {ranked.map((p, i) => (
+                <Link
+                  key={p.name}
+                  href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
+                  className="grid grid-cols-12 gap-3 px-6 py-3 items-center hover:bg-white/5 transition-colors"
+                >
                   <div className="col-span-1 text-center font-black text-white/50">
                     {i === 0 ? <Crown size={16} className="text-yellow-400 inline" /> : `#${i + 1}`}
                   </div>
-                  <div className="col-span-3 flex items-center gap-2 md:gap-3 min-w-0">
+                  <div className="col-span-3 flex items-center gap-3 min-w-0">
                     <PlayerAvatar
                       name={p.name}
                       avatarUrl={avatarMap[p.name]}
                       size={44}
                       className="rounded-full border border-white/10 shrink-0"
                     />
-                    <span className="font-bold text-sm md:text-base lg:text-lg truncate">{p.name}</span>
+                    <span className="font-bold text-base lg:text-lg truncate">{p.name}</span>
                   </div>
                   <div className="col-span-2 text-right">
-                    <span className="text-base font-bold text-white/70">£{p.buyIn.toFixed(2)}</span>
+                    <span className="text-base font-bold text-white/70 tabular-nums">£{p.buyIn.toFixed(2)}</span>
                   </div>
                   <div className="col-span-2 text-right">
-                    <span className="text-base font-bold text-white/70">£{p.cashOut.toFixed(2)}</span>
+                    <span className="text-base font-bold text-white/70 tabular-nums">£{p.cashOut.toFixed(2)}</span>
                   </div>
                   <div className="col-span-2 flex items-center justify-end gap-1">
                     <Pizza size={11} className="text-yellow-400/60" />
-                    <span className="text-base font-bold text-white/70">£{p.food.toFixed(2)}</span>
+                    <span className="text-base font-bold text-white/70 tabular-nums">£{p.food.toFixed(2)}</span>
                   </div>
                   <div className="col-span-2 text-right">
                     <span
-                      className={`text-base md:text-lg font-black ${
+                      className={`text-lg font-black tabular-nums ${
                         p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
                       }`}
                     >
                       {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
                     </span>
                   </div>
-                  </Link>
-                ))}
-              </div>
+                </Link>
+              ))}
             </div>
           </div>
 
