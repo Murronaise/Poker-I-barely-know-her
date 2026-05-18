@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import MotionProvider from "@/components/MotionProvider";
 import PollLoginPrompt from "@/components/PollLoginPrompt";
 import VisitTracker from "@/components/VisitTracker";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -75,6 +76,7 @@ export default function RootLayout({
           <Toaster theme="dark" position="top-center" richColors />
           <PollLoginPrompt />
           <VisitTracker />
+          <ServiceWorkerRegistration />
         </MotionProvider>
       </body>
     </html>

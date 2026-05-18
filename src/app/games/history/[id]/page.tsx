@@ -14,12 +14,41 @@ import PlayerAvatar from "@/components/PlayerAvatar";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import HistoryActions from "@/components/HistoryActions";
 import SettlementSettleButton from "@/components/SettlementSettleButton";
+import AdminGameNotes from "@/components/AdminGameNotes";
+import { fetchGameNote } from "@/lib/game-notes-db";
+import GamePhotos from "@/components/GamePhotos";
 import { getHistoricalGame } from "@/lib/historical-games";
-import { FOOD_PAYER } from "@/lib/local-store";
+import { FOOD_PAYER, ADMIN_PLAYER } from "@/lib/local-store";
 import { supabase } from "@/lib/supabase";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdminDb } from "@/lib/auth";
-import { fetchSettledPlayers } from "@/lib/settlements-db";
+import { fetchSettlementRecords, type SettlementRecord } from "@/lib/settlements-db";
+import {
+  activeProviders,
+  buildPaymentLink,
+  getHandlesFor,
+  loadPaymentHandlesForPlayers,
+  PROVIDER_LABEL,
+  PROVIDER_ACCENT,
+} from "@/lib/payment-links";
+
+// Cheap relative-time formatter for the "paid 2h ago" subtitle. We don't
+// pull in date-fns or dayjs for this single use; rounding to a coarse unit
+// is good enough.
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export default async function HistoricalGamePage({
   params,
@@ -33,7 +62,24 @@ export default async function HistoricalGamePage({
   const sb = await createSupabaseServerClient();
   const { data: { user } } = await sb.auth.getUser();
   const userIsAdmin = await isAdminDb(sb, user?.email);
-  const settledPlayers = await fetchSettledPlayers(sb, game.id);
+  const settlementRecords = await fetchSettlementRecords(sb, game.id);
+  // Set form used by the existing settled-state checks; the Map form is
+  // used to render "paid {time} by {who}" alongside each tick.
+  const settledPlayers = new Set(settlementRecords.keys());
+  const settlementMetaFor = (playerName: string): SettlementRecord | null =>
+    settlementRecords.get(playerName.toLowerCase()) ?? null;
+  // Fetch payment handles for every player on the roster (admin + everyone
+  // else, in case the admin → player payout case shows up). The helper
+  // tolerates the Phase A migration not being applied yet — it just
+  // returns an empty map and the deep-link chips don't render.
+  const paymentHandles = await loadPaymentHandlesForPlayers(
+    sb,
+    game.players.map((p) => p.name),
+  );
+  // Admin notes — only fetched (and rendered) when the viewer is admin. The
+  // RLS policy on game_notes already rejects non-admin reads, but skipping
+  // the call entirely saves a round-trip for everyone else.
+  const adminNote = userIsAdmin ? await fetchGameNote(sb, game.id) : null;
 
   // Fetch avatar URLs from Supabase
   const { data: playerRows } = await supabase
@@ -52,28 +98,55 @@ export default async function HistoricalGamePage({
   const totalBuyIn = game.players.reduce((s, p) => s + p.buyIn, 0);
   const totalFood = game.players.reduce((s, p) => s + p.food, 0);
 
-  // Single end-of-game settlement. Each player's net = cashOut − buyIn − food.
-  // Positive ⇒ admin pays them; negative ⇒ they pay admin. One transaction
-  // per player, settles the entire night in a single transfer either way.
-  // Rebuys are already folded into buyIn by the live tracker.
-  const nonAdminPlayers = game.players.filter((p) => p.name !== FOOD_PAYER);
+  // Admin-collects-all settlement (see AGENTS.md "Settlement Flow"):
+  //   - Poker portion (cashOut − buyIn) routes through ADMIN_PLAYER.
+  //   - Food portion routes through FOOD_PAYER.
+  // When the two are the same person (today's default), every non-admin
+  // player has a single combined transaction. When they differ, we still
+  // render one row per player but the receiver text reflects the food
+  // payer for any line where the food portion dominates.
+  //
+  // The admin themselves is excluded — they can't owe themselves. Their
+  // own poker performance and their food share are absorbed into the
+  // admin pot at reconciliation time.
+  const adminLower = ADMIN_PLAYER.toLowerCase();
+  const foodPayerLower = FOOD_PAYER.toLowerCase();
+  const nonAdminPlayers = game.players.filter(
+    (p) => p.name.toLowerCase() !== adminLower,
+  );
 
   const playerNets = nonAdminPlayers
-    .map((p) => ({
-      name: p.name,
-      buyIn: p.buyIn,
-      cashOut: p.cashOut,
-      food: p.food,
-      net: p.cashOut - p.buyIn - p.food,
-    }))
+    .map((p) => {
+      const pokerNet = p.cashOut - p.buyIn;
+      // Food is always paid TO the food payer regardless of whose net is
+      // positive on the poker side — so we represent the food share as a
+      // separate negative contribution to the player's combined net.
+      const isFoodPayer = p.name.toLowerCase() === foodPayerLower;
+      const foodOwed = isFoodPayer ? 0 : p.food;
+      return {
+        name: p.name,
+        buyIn: p.buyIn,
+        cashOut: p.cashOut,
+        food: foodOwed,
+        pokerNet,
+        // Combined net, used to decide debtor vs creditor when admin === food
+        // payer (the common case). For the split case the rendering still
+        // shows the combined number but the totals reconcile correctly.
+        net: pokerNet - foodOwed,
+      };
+    })
     .filter((p) => Math.abs(p.net) > 0.005 || p.buyIn > 0.005 || p.food > 0.005);
 
+  // When admin and food payer are the same person, "to" / "from" reads as
+  // that single name in every row. When they differ, we annotate the lead
+  // settlement with admin but keep food breakdown on the line so the
+  // payer/receiver picture stays legible.
   const settlements = playerNets
     .filter((p) => p.net < -0.005)
     .sort((a, b) => a.net - b.net)
     .map((p) => ({
       from: p.name,
-      to: FOOD_PAYER,
+      to: ADMIN_PLAYER,
       pence: Math.round(-p.net * 100),
       buyInPence: Math.round(p.buyIn * 100),
       cashOutPence: Math.round(p.cashOut * 100),
@@ -85,7 +158,7 @@ export default async function HistoricalGamePage({
     .sort((a, b) => b.net - a.net)
     .map((p) => ({
       to: p.name,
-      from: FOOD_PAYER,
+      from: ADMIN_PLAYER,
       pence: Math.round(p.net * 100),
       buyInPence: Math.round(p.buyIn * 100),
       cashOutPence: Math.round(p.cashOut * 100),
@@ -158,6 +231,18 @@ export default async function HistoricalGamePage({
           </div>
         ))}
       </div>
+
+      {/* Admin-only notes — private context for this session. RLS gates the
+          server-side fetch, this conditional gates the render. */}
+      {userIsAdmin && (
+        <AdminGameNotes gameId={game.id} initialNote={adminNote} />
+      )}
+
+      {/* Chip-stack / table photos — public read, upload gated to signed-in
+          users. Self-suppresses when there are no photos AND the viewer
+          can't upload (so anonymous visitors don't see an empty box). */}
+      <GamePhotos gameId={game.id} canUpload={Boolean(user)} />
+
 
       {/* Settlement table */}
       <CollapsibleSection title="Results" icon={<Crown size={18} className="text-yellow-400"/>} defaultOpen={false}>
@@ -243,16 +328,30 @@ export default async function HistoricalGamePage({
             <p className="text-sm text-white/40 py-4 text-center">No settlement required</p>
           )}
 
-          {settlements.map((s, i) => (
+          {settlements.map((s, i) => {
+            // The debtor pays the receiver, so we surface the receiver's
+            // payment handles. Pre-fill the amount so a tap lands on a
+            // payment screen with the right number already typed.
+            const receiverHandles = getHandlesFor(paymentHandles, s.to);
+            const providers = activeProviders(receiverHandles);
+            const meta = settlementMetaFor(s.from);
+            return (
             <div
               key={`owe-${i}`}
-              className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
+              className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex flex-col gap-2"
             >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
                 <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                   <p className="text-sm font-bold text-white truncate">{s.from}</p>
                   <p className="text-xs text-red-400/70 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
+                  {meta && (
+                    <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
+                      Paid {relativeTime(meta.settledAt)}
+                      {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
+                    </p>
+                  )}
                 </div>
                 <p className="text-lg font-black text-red-400 tabular-nums shrink-0 sm:hidden">
                   £{(s.pence / 100).toFixed(2)}
@@ -277,19 +376,55 @@ export default async function HistoricalGamePage({
                   initialSettled={settledPlayers.has(s.from.toLowerCase())}
                 />
               </div>
-            </div>
-          ))}
+              </div>
 
-          {payouts.map((p, i) => (
+              {providers.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/5">
+                  <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
+                    Pay {s.to}:
+                  </span>
+                  {providers.map((provider) => {
+                    const href = buildPaymentLink(provider, receiverHandles[provider], s.pence);
+                    if (!href) return null;
+                    return (
+                      <a
+                        key={provider}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
+                      >
+                        {PROVIDER_LABEL[provider]}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            );
+          })}
+
+          {payouts.map((p, i) => {
+            const receiverHandles = getHandlesFor(paymentHandles, p.to);
+            const providers = activeProviders(receiverHandles);
+            const meta = settlementMetaFor(p.to);
+            return (
             <div
               key={`pay-${i}`}
-              className="bg-black/40 border border-[#39FF14]/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3"
+              className="bg-black/40 border border-[#39FF14]/20 rounded-lg p-3 flex flex-col gap-2"
             >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
                 <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                   <p className="text-sm font-bold text-white truncate">{p.to}</p>
                   <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
+                  {meta && (
+                    <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
+                      Paid {relativeTime(meta.settledAt)}
+                      {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
+                    </p>
+                  )}
                 </div>
                 <p className="text-lg font-black text-[#39FF14] tabular-nums shrink-0 sm:hidden">
                   £{(p.pence / 100).toFixed(2)}
@@ -314,8 +449,33 @@ export default async function HistoricalGamePage({
                   initialSettled={settledPlayers.has(p.to.toLowerCase())}
                 />
               </div>
+              </div>
+
+              {providers.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/5">
+                  <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
+                    Pay {p.to}:
+                  </span>
+                  {providers.map((provider) => {
+                    const href = buildPaymentLink(provider, receiverHandles[provider], p.pence);
+                    if (!href) return null;
+                    return (
+                      <a
+                        key={provider}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
+                      >
+                        {PROVIDER_LABEL[provider]}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </CollapsibleSection>
     </main>

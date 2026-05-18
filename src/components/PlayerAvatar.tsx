@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Image from "next/image";
 import { getAvatarPosition, type AvatarPosition, defaultAvatarPosition } from "@/lib/local-store";
 import { useIsMounted } from "@/lib/use-hydration";
@@ -23,11 +23,19 @@ export default function PlayerAvatar({
   isSelected = false,
   position,
 }: PlayerAvatarProps) {
+  // Avatar framing comes from localStorage and varies between SSR (none) and
+  // the client (saved value). To stop the avatar from visibly jumping during
+  // hydration we keep opacity at 0 until the stored position is resolved.
+  // For callers that pass an explicit `position` prop we already have the
+  // value at first paint, so there's nothing to wait for.
   const isMounted = useIsMounted();
-  // Read the stored position synchronously on the client; fall back to default
-  // during SSR / first render so server and client markup match.
-  const resolvedPos: AvatarPosition =
-    position ?? (isMounted && avatarUrl ? getAvatarPosition(name) : defaultAvatarPosition);
+  const resolvedPos = useMemo<AvatarPosition | null>(() => {
+    if (position) return position;
+    if (!isMounted) return null;
+    return avatarUrl ? getAvatarPosition(name) : defaultAvatarPosition;
+  }, [isMounted, position, avatarUrl, name]);
+  const positionReady = resolvedPos !== null;
+  const drawPos = resolvedPos ?? defaultAvatarPosition;
 
   // Custom uploaded image — render plain img so objectPosition + transform compose correctly
   if (avatarUrl) {
@@ -40,11 +48,12 @@ export default function PlayerAvatar({
         <img
           src={avatarUrl}
           alt={name}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover transition-opacity"
           style={{
-            objectPosition: `${resolvedPos.x}% ${resolvedPos.y}%`,
-            transform: `scale(${resolvedPos.scale})`,
-            transformOrigin: `${resolvedPos.x}% ${resolvedPos.y}%`,
+            objectPosition: `${drawPos.x}% ${drawPos.y}%`,
+            transform: `scale(${drawPos.scale})`,
+            transformOrigin: `${drawPos.x}% ${drawPos.y}%`,
+            opacity: positionReady ? 1 : 0,
           }}
           draggable={false}
         />

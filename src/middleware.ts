@@ -7,7 +7,7 @@ const VISITOR_COOKIE = "pt_visitor_id";
 const VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
@@ -20,7 +20,10 @@ export async function middleware(request: NextRequest) {
     response.cookies.set(VISITOR_COOKIE, crypto.randomUUID(), {
       maxAge: VISITOR_COOKIE_MAX_AGE,
       sameSite: "lax",
-      httpOnly: false, // readable from JS so the visit tracker can post it back
+      // The /api/track-visit route reads the cookie from the request header
+      // server-side, so JS access is unnecessary. Keep it httpOnly so XSS
+      // can't read or spoof the visitor identifier.
+      httpOnly: true,
       path: "/",
     });
   }

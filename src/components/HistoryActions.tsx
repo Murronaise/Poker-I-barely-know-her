@@ -4,11 +4,14 @@ import { useState, useEffect, useMemo } from "react";
 import { BadgeCheck, Edit2, Trash2, X, RotateCcw } from "lucide-react";
 import { deleteGame, getGamePatch, patchGame } from "@/lib/local-store";
 import { clearGameSettlementDb } from "@/lib/settlements-db";
+import { softDeleteGame } from "@/lib/soft-delete-db";
+import { recordAudit } from "@/lib/audit-log";
 import { useIsMounted } from "@/lib/use-hydration";
 import { useRouter } from "next/navigation";
 import { HistoricalGame } from "@/lib/historical-games";
 import { motion } from "framer-motion";
 import { onSettlementToggled, emitSettlementToggled } from "@/lib/settlement-events";
+import { toast } from "sonner";
 
 type Props = {
   gameId: string;
@@ -84,12 +87,22 @@ export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, 
 
   const handleSaveEdit = () => {
     patchGame(gameId, editData);
+    void recordAudit("game", gameId, "edit", editData);
     setShowEditModal(false);
     router.refresh();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    // Local fallback so the UI updates instantly even if the network call
+    // hiccups. The DB write is the authoritative copy that syncs across
+    // devices — if it fails, we surface a toast but keep the local hide.
     deleteGame(gameId);
+    try {
+      await softDeleteGame(gameId);
+    } catch (err) {
+      console.error("[soft-delete] DB write failed", err);
+      toast.error("Hidden locally, but the cross-device delete failed — try again or restore from /admin/restore.");
+    }
     router.push("/games");
   };
 

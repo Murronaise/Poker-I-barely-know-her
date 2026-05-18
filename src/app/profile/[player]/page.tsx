@@ -18,6 +18,7 @@ import {
   Swords,
   Settings,
   Eye,
+  Crown,
 } from "lucide-react";
 import {
   AreaChart,
@@ -40,6 +41,21 @@ import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
 import { isAdmin } from "@/lib/auth";
 import { BadgeCheck } from "lucide-react";
+import { toast } from "sonner";
+import PlayerOutstandingBalance from "@/components/PlayerOutstandingBalance";
+import AchievementsGrid from "@/components/AchievementsGrid";
+
+// Storage bucket rejects anything outside this set, but doing the check
+// client-side gives users a fast error message and avoids burning their
+// upload quota on a doomed request.
+const AVATAR_MAX_BYTES = 4 * 1024 * 1024; // 4 MB
+const AVATAR_ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const AVATAR_ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
 export default function ProfilePage({
   params,
@@ -174,6 +190,25 @@ export default function ProfilePage({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset the input so the same file can be re-selected if the upload
+    // gets rejected (otherwise onChange won't fire twice in a row).
+    e.target.value = "";
+
+    // Validate before we kick off the upload. The bucket should reject the
+    // same set of inputs server-side, but failing early avoids a hung
+    // "uploading" state.
+    if (file.size > AVATAR_MAX_BYTES) {
+      toast.error(`Image is too large — keep it under ${Math.round(AVATAR_MAX_BYTES / (1024 * 1024))} MB.`);
+      return;
+    }
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const mimeOk = AVATAR_ALLOWED_TYPES.has(file.type);
+    const extOk = AVATAR_ALLOWED_EXTENSIONS.has(ext);
+    if (!mimeOk || !extOk) {
+      toast.error("Avatar must be a JPG, PNG, WEBP, or GIF image.");
+      return;
+    }
+
     const objectUrl = URL.createObjectURL(file);
     setAvatarUrl(objectUrl);
     setShowPositioner(true); // open positioner immediately so user can frame the new image
@@ -186,15 +221,18 @@ export default function ProfilePage({
       // unauthenticated writes, which is what was happening with the plain
       // module client.
       const sb = createSupabaseBrowserClient();
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${playerName.replace(/ /g, "-").toLowerCase()}-${Math.random()}.${fileExt}`;
+      // Use the validated extension rather than blindly trusting whatever
+      // the filename ended in — a "totally-safe.png.exe" would otherwise
+      // sneak through.
+      const fileName = `${playerName.replace(/ /g, "-").toLowerCase()}-${Math.random()}.${ext}`;
 
       const { error: uploadError } = await sb.storage
         .from("avatars")
-        .upload(fileName, file);
+        .upload(fileName, file, { contentType: file.type });
 
       if (uploadError) {
         console.error("Error uploading avatar:", uploadError);
+        toast.error("Couldn't upload your avatar — please try again.");
         return;
       }
 
@@ -203,9 +241,13 @@ export default function ProfilePage({
       const { error: upsertError } = await sb
         .from("players")
         .upsert({ name: playerName, avatar_url: data.publicUrl }, { onConflict: "name" });
-      if (upsertError) console.error("Error saving avatar URL:", upsertError);
+      if (upsertError) {
+        console.error("Error saving avatar URL:", upsertError);
+        toast.error("Avatar uploaded, but saving it to your profile failed.");
+      }
     } catch (error) {
       console.error("Error uploading avatar:", error);
+      toast.error("Something went wrong uploading your avatar.");
     } finally {
       setIsUploading(false);
     }
@@ -282,6 +324,30 @@ export default function ProfilePage({
       break;
     }
   }
+
+  // Longest-ever streaks (separate from the *current* streak above) — for
+  // the Personal Bests section. We walk chronologically (sessions are
+  // recent-first, so reverse) and track the high-water mark on each side.
+  let longestWinStreak = 0;
+  let longestLossStreak = 0;
+  let runWin = 0;
+  let runLoss = 0;
+  for (const s of [...playerSessions].reverse()) {
+    if (s.net >= 0) {
+      runWin += 1;
+      runLoss = 0;
+      if (runWin > longestWinStreak) longestWinStreak = runWin;
+    } else {
+      runLoss += 1;
+      runWin = 0;
+      if (runLoss > longestLossStreak) longestLossStreak = runLoss;
+    }
+  }
+  // The session that produced biggestWin / biggestLoss (for date stamps).
+  const biggestWinSession = playerSessions.find((s) => s.net === biggestWin) ?? null;
+  const biggestLossSession = playerSessions.find((s) => s.net === biggestLoss) ?? null;
+  const firstSession = playerSessions[playerSessions.length - 1] ?? null;
+  const mostRecentSession = playerSessions[0] ?? null;
 
   // H2H comparison must use the *same* net definition on both sides — the
   // player's `session.net` is `cashOut - buyIn` (food is settled separately
@@ -504,6 +570,11 @@ export default function ProfilePage({
           </div>
         )}
 
+        {/* Running balance tile — only renders for non-admin players with an
+            actual outstanding balance. Self-suppresses for the admin and
+            for genuinely-clean accounts. */}
+        <PlayerOutstandingBalance playerName={playerName} />
+
         {/* Lifetime Performance Chart — collapsible. Stroke + fill flip red
             when the player's cumulative net is below £0 so the colour matches
             the financial reality (green-on-loss was misleading). */}
@@ -630,6 +701,80 @@ export default function ProfilePage({
             )}
           </div>
         </CollapsibleSection>
+
+        {/* Achievements grid — always renders so locked badges encourage
+            new accounts to keep playing. */}
+        {playerSessions.length > 0 && <AchievementsGrid playerName={playerName} />}
+
+        {/* Personal Bests — derived from playerSessions. Self-suppresses
+            for accounts with no history so a brand-new signup doesn't see
+            a wall of "—". */}
+        {playerSessions.length > 0 && (
+          <section className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 md:p-5 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 rounded-lg bg-yellow-400/10 border border-yellow-400/30 shrink-0">
+                <Crown size={14} className="text-yellow-400" />
+              </div>
+              <h2 className="text-sm md:text-base font-black tracking-widest uppercase">
+                Personal Bests
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40">Biggest win</p>
+                <p className="text-lg md:text-xl font-black text-[#39FF14] tabular-nums">
+                  {biggestWin > 0 ? formatNet(biggestWin) : "—"}
+                </p>
+                {biggestWinSession && biggestWin > 0 && (
+                  <p className="text-[10px] text-white/30 truncate" title={biggestWinSession.date}>
+                    {biggestWinSession.date}
+                  </p>
+                )}
+              </div>
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40">Biggest loss</p>
+                <p className="text-lg md:text-xl font-black text-red-400 tabular-nums">
+                  {biggestLoss < 0 ? formatNet(biggestLoss) : "—"}
+                </p>
+                {biggestLossSession && biggestLoss < 0 && (
+                  <p className="text-[10px] text-white/30 truncate" title={biggestLossSession.date}>
+                    {biggestLossSession.date}
+                  </p>
+                )}
+              </div>
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40">Longest win streak</p>
+                <p className="text-lg md:text-xl font-black text-[#39FF14] tabular-nums">
+                  {longestWinStreak}{" "}
+                  <span className="text-xs font-bold text-white/40 uppercase tracking-widest">
+                    session{longestWinStreak === 1 ? "" : "s"}
+                  </span>
+                </p>
+              </div>
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40">Longest losing streak</p>
+                <p className="text-lg md:text-xl font-black text-red-400 tabular-nums">
+                  {longestLossStreak}{" "}
+                  <span className="text-xs font-bold text-white/40 uppercase tracking-widest">
+                    session{longestLossStreak === 1 ? "" : "s"}
+                  </span>
+                </p>
+              </div>
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40">Debut</p>
+                <p className="text-base md:text-lg font-black text-white tabular-nums truncate">
+                  {firstSession?.date ?? "—"}
+                </p>
+              </div>
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40">Most recent</p>
+                <p className="text-base md:text-lg font-black text-white tabular-nums truncate">
+                  {mostRecentSession?.date ?? "—"}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Recent Sessions — collapsible, links to history */}
         <CollapsibleSection

@@ -39,7 +39,12 @@ import Link from "next/link";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import Sparkline from "@/components/Sparkline";
 import PollBanner from "@/components/PollBanner";
+import AdminLedgerSummary from "@/components/AdminLedgerSummary";
+import YearlyRecapBanner from "@/components/YearlyRecapBanner";
 import { historicalGames } from "@/lib/historical-games";
+import { getStoredPlayers } from "@/lib/local-store";
+import { loadRegisteredPlayers } from "@/lib/registered-players";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const pageVariants: Variants = {
   hidden: { opacity: 0 },
@@ -70,93 +75,302 @@ type MetricCard = {
   trendPositive: boolean;
 };
 
-const metrics: MetricCard[] = [
-  {
-    id: 1, title: "Money Printer",
-    subtext: "The biggest all-time winner.",
-    categorySlug: "overall-leader",
-    player: "Jake", value: "+£56.65", icon: Trophy, valColor: "text-[#39FF14]",
-    themeColor: "text-yellow-400", themeRgb: "250,204,21",
-    runnerUp: { name: "Tony", value: "+£42.50" }, lead: "+£14.15 ahead",
-    trend: [0, 0, 0, 0, 0.15, 56.65], trendPositive: true,
-  },
-  {
-    id: 2, title: "Probably Cheating",
-    subtext: "Wins so consistently it raises eyebrows.",
-    categorySlug: "the-shark",
-    player: "Jake", value: "100%", icon: Swords, valColor: "text-[#39FF14]",
-    themeColor: "text-[#39FF14]", themeRgb: "57,255,20",
-    runnerUp: { name: "Connor", value: "100%" }, lead: "tied — Jake biggest profit",
-    trend: [50, 100, 100, 100, 100, 100], trendPositive: true,
-  },
-  {
-    id: 3, title: "Mortgage Material",
-    subtext: "Has pushed the most chips across the table.",
-    categorySlug: "the-whale",
-    player: "Tristan", value: "£170", icon: CircleDollarSign, valColor: "text-cyan-400",
-    themeColor: "text-cyan-400", themeRgb: "34,211,238",
-    runnerUp: { name: "Harry", value: "£105" }, lead: "+£65 over runner-up",
-    trend: [35, 35, 55, 95, 95, 170], trendPositive: true,
-  },
-  {
-    id: 4, title: "The Pit",
-    subtext: "Took the worst beating in a single night.",
-    categorySlug: "the-tank",
-    player: "Tristan", value: "-£75.00", icon: Anchor, valColor: "text-red-400",
-    themeColor: "text-red-400", themeRgb: "248,113,113",
-    runnerUp: { name: "Harry", value: "-£42.30" }, lead: "May 1, 2026 session",
-    trend: [-26, -26, -26, -26, -26, -75], trendPositive: false,
-  },
-  {
-    id: 5, title: "Food Gremlin",
-    subtext: "Eats more than they play.",
-    categorySlug: "the-vacuum",
-    player: "Jake", value: "£48.95", icon: Pizza, valColor: "text-orange-400",
-    themeColor: "text-orange-400", themeRgb: "251,146,60",
-    runnerUp: { name: "Kai", value: "£40.66" }, lead: "+£8.29 over runner-up",
-    trend: [0, 0, 37.15, 37.15, 37.15, 48.95], trendPositive: true,
-  },
-  {
-    id: 6, title: "Part of the Furniture",
-    subtext: "Never misses a session — practically lives at the table.",
-    categorySlug: "the-grinder",
-    player: "Kai", value: "4 Sessions", icon: Timer, valColor: "text-blue-400",
-    themeColor: "text-blue-400", themeRgb: "96,165,250",
-    runnerUp: { name: "Toby", value: "4" }, lead: "tied with Toby & Tristan",
-    trend: [1, 1, 2, 3, 3, 4], trendPositive: true,
-  },
-  {
-    id: 7, title: "Cardiac Episode",
-    subtext: "Wild swings between best and worst nights.",
-    categorySlug: "the-maniac",
-    player: "Tristan", value: "£99.40 Swing", icon: Zap, valColor: "text-purple-400",
-    themeColor: "text-purple-400", themeRgb: "192,132,252",
-    runnerUp: { name: "Jake", value: "£56.35" }, lead: "−£75.00 to +£24.40",
-    trend: [26, 26, 26, 75, 100, 99.4], trendPositive: true,
-  },
-];
+// Per-player lifetime stats — derived from the historical session log so the
+// dashboard metrics, runner-up labels, and sparkline trends stay accurate as
+// new sessions land in historicalGames.ts (was previously a frozen snapshot
+// of leaders from a specific date).
+type PlayerLifetimeStats = {
+  name: string;
+  netLifetime: number;
+  totalBuyIn: number;
+  totalFood: number;
+  sessions: number;
+  winRate: number;          // 0..100
+  bestSingleNet: number;
+  worstSingleNet: number;
+  worstSingleDate: string;
+  swing: number;
+  netTrend: number[];       // running cumulative net
+  winRateTrend: number[];   // running win-rate %
+  volumeTrend: number[];    // running cumulative buy-ins
+  foodTrend: number[];      // running cumulative food spend
+  worstTrend: number[];     // running worst single-night net
+  sessionCountTrend: number[];
+  swingTrend: number[];
+};
 
-// Lifetime poker net per player (cash-out minus buy-in, food settled separately).
-// `magnitude` is what Recharts uses for the bar height so every stack grows up
-// from the same £0 baseline; `profit` keeps the sign so the chip shape can
-// colour itself green / red and the tooltip can show the real value.
-const trueDataArray = [
-  { name: "Jake", profit: 56.65, magnitude: 56.65 },
-  { name: "Tony", profit: 42.5, magnitude: 42.5 },
-  { name: "Toby", profit: 31.2, magnitude: 31.2 },
-  { name: "Connor", profit: 27.8, magnitude: 27.8 },
-  { name: "Liam", profit: 2, magnitude: 2 },
-  { name: "Kai", profit: -32.3, magnitude: 32.3 },
-  { name: "Harry", profit: -52.45, magnitude: 52.45 },
-  { name: "Tristan", profit: -75.4, magnitude: 75.4 },
-];
+const lifetimeStats: PlayerLifetimeStats[] = (() => {
+  type SessionEntry = { date: string; net: number; buyIn: number; food: number };
+  const byName = new Map<string, SessionEntry[]>();
+  // Walk chronologically (historicalGames is most-recent-first) so trend
+  // arrays read left → right oldest → newest.
+  [...historicalGames].reverse().forEach((g) => {
+    g.players.forEach((p) => {
+      const net = p.cashOut - p.buyIn;
+      if (!byName.has(p.name)) byName.set(p.name, []);
+      byName.get(p.name)!.push({ date: g.date, net, buyIn: p.buyIn, food: p.food });
+    });
+  });
+
+  const padTrend = (trend: number[]): number[] => {
+    const out = [...trend];
+    while (out.length < 6) out.unshift(0);
+    return out;
+  };
+
+  return [...byName.entries()].map(([name, sessions]): PlayerLifetimeStats => {
+    const netLifetime = sessions.reduce((s, x) => s + x.net, 0);
+    const totalBuyIn = sessions.reduce((s, x) => s + x.buyIn, 0);
+    const totalFood = sessions.reduce((s, x) => s + x.food, 0);
+    const wins = sessions.filter((x) => x.net >= 0).length;
+    const winRate = sessions.length > 0 ? Math.round((100 * wins) / sessions.length) : 0;
+    const bestSingleNet = sessions.reduce((b, x) => Math.max(b, x.net), -Infinity);
+    const worstEntry = sessions.reduce(
+      (worst, x) => (x.net < worst.net ? x : worst),
+      sessions[0],
+    );
+
+    // Build running trends in one pass.
+    const netTrend: number[] = [];
+    const winRateTrend: number[] = [];
+    const volumeTrend: number[] = [];
+    const foodTrend: number[] = [];
+    const worstTrend: number[] = [];
+    const sessionCountTrend: number[] = [];
+    const swingTrend: number[] = [];
+    let runningNet = 0;
+    let runningWins = 0;
+    let runningVolume = 0;
+    let runningFood = 0;
+    let runningWorst = Infinity;
+    let runningBest = -Infinity;
+    sessions.forEach((s, idx) => {
+      runningNet += s.net;
+      if (s.net >= 0) runningWins += 1;
+      runningVolume += s.buyIn;
+      runningFood += s.food;
+      runningWorst = Math.min(runningWorst, s.net);
+      runningBest = Math.max(runningBest, s.net);
+      netTrend.push(Number(runningNet.toFixed(2)));
+      winRateTrend.push(Math.round((100 * runningWins) / (idx + 1)));
+      volumeTrend.push(Number(runningVolume.toFixed(2)));
+      foodTrend.push(Number(runningFood.toFixed(2)));
+      worstTrend.push(Number(runningWorst.toFixed(2)));
+      sessionCountTrend.push(idx + 1);
+      swingTrend.push(Number((runningBest - runningWorst).toFixed(2)));
+    });
+
+    return {
+      name,
+      netLifetime: Number(netLifetime.toFixed(2)),
+      totalBuyIn: Number(totalBuyIn.toFixed(2)),
+      totalFood: Number(totalFood.toFixed(2)),
+      sessions: sessions.length,
+      winRate,
+      bestSingleNet: Number(bestSingleNet.toFixed(2)),
+      worstSingleNet: Number(worstEntry.net.toFixed(2)),
+      worstSingleDate: worstEntry.date,
+      swing: Number((bestSingleNet - worstEntry.net).toFixed(2)),
+      netTrend: padTrend(netTrend),
+      winRateTrend: padTrend(winRateTrend),
+      volumeTrend: padTrend(volumeTrend),
+      foodTrend: padTrend(foodTrend),
+      worstTrend: padTrend(worstTrend),
+      sessionCountTrend: padTrend(sessionCountTrend),
+      swingTrend: padTrend(swingTrend),
+    };
+  });
+})();
+
+const formatSigned = (n: number) =>
+  `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
+
+// "Pick top by metric" helper that returns the leader, the runner-up, and a
+// tie flag so the lead-line text can say "tied with X" instead of pretending
+// there's a clear winner.
+function topBy(
+  rows: PlayerLifetimeStats[],
+  pick: (p: PlayerLifetimeStats) => number,
+  tieBreak?: (p: PlayerLifetimeStats) => number,
+): { leader: PlayerLifetimeStats; runnerUp: PlayerLifetimeStats | null; tied: boolean } {
+  if (rows.length === 0) {
+    throw new Error("topBy: no players to rank — historicalGames is empty");
+  }
+  const sorted = [...rows].sort((a, b) => {
+    const diff = pick(b) - pick(a);
+    if (diff !== 0 || !tieBreak) return diff;
+    return tieBreak(b) - tieBreak(a);
+  });
+  const leader = sorted[0];
+  const runnerUp = sorted[1] ?? null;
+  const tied = runnerUp ? pick(runnerUp) === pick(leader) : false;
+  return { leader, runnerUp, tied };
+}
+
+const metrics: MetricCard[] = (() => {
+  if (lifetimeStats.length === 0) return [];
+
+  // Money Printer — biggest lifetime net.
+  const overall = topBy(lifetimeStats, (p) => p.netLifetime);
+  // The Shark — highest win rate, break ties by lifetime net so we don't keep
+  // a player with a single lucky session at the top.
+  const shark = topBy(lifetimeStats, (p) => p.winRate, (p) => p.netLifetime);
+  // The Whale — most chips pushed across the table (sum of buy-ins).
+  const whale = topBy(lifetimeStats, (p) => p.totalBuyIn);
+  // The Tank — worst single-night beating. Pick by lowest single-session net;
+  // sort ASCENDING here, so flip the picker sign.
+  const tank = topBy(lifetimeStats, (p) => -p.worstSingleNet);
+  // The Vacuum — most food eaten.
+  const vacuum = topBy(lifetimeStats, (p) => p.totalFood);
+  // The Grinder — most sessions played.
+  const grinder = topBy(lifetimeStats, (p) => p.sessions);
+  // The Maniac — biggest swing between best and worst nights.
+  const maniac = topBy(lifetimeStats, (p) => p.swing);
+
+  const overUnderText = (delta: number, suffix: string) =>
+    `${formatSigned(delta)} ${suffix}`;
+
+  return [
+    {
+      id: 1, title: "Money Printer", subtext: "The biggest all-time winner.",
+      categorySlug: "overall-leader",
+      player: overall.leader.name,
+      value: formatSigned(overall.leader.netLifetime),
+      icon: Trophy, valColor: "text-[#39FF14]",
+      themeColor: "text-yellow-400", themeRgb: "250,204,21",
+      runnerUp: overall.runnerUp
+        ? { name: overall.runnerUp.name, value: formatSigned(overall.runnerUp.netLifetime) }
+        : { name: "—", value: "—" },
+      lead: overall.runnerUp
+        ? overUnderText(overall.leader.netLifetime - overall.runnerUp.netLifetime, "ahead")
+        : "no challengers",
+      trend: overall.leader.netTrend,
+      trendPositive: overall.leader.netLifetime >= 0,
+    },
+    {
+      id: 2, title: "Probably Cheating", subtext: "Wins so consistently it raises eyebrows.",
+      categorySlug: "the-shark",
+      player: shark.leader.name,
+      value: `${shark.leader.winRate}%`,
+      icon: Swords, valColor: "text-[#39FF14]",
+      themeColor: "text-[#39FF14]", themeRgb: "57,255,20",
+      runnerUp: shark.runnerUp
+        ? { name: shark.runnerUp.name, value: `${shark.runnerUp.winRate}%` }
+        : { name: "—", value: "—" },
+      lead: shark.tied
+        ? `tied — ${shark.leader.name} biggest profit`
+        : shark.runnerUp
+          ? `+${shark.leader.winRate - shark.runnerUp.winRate}% over runner-up`
+          : "no challengers",
+      trend: shark.leader.winRateTrend,
+      trendPositive: true,
+    },
+    {
+      id: 3, title: "Mortgage Material", subtext: "Has pushed the most chips across the table.",
+      categorySlug: "the-whale",
+      player: whale.leader.name,
+      value: `£${whale.leader.totalBuyIn.toLocaleString()}`,
+      icon: CircleDollarSign, valColor: "text-cyan-400",
+      themeColor: "text-cyan-400", themeRgb: "34,211,238",
+      runnerUp: whale.runnerUp
+        ? { name: whale.runnerUp.name, value: `£${whale.runnerUp.totalBuyIn.toLocaleString()}` }
+        : { name: "—", value: "—" },
+      lead: whale.runnerUp
+        ? `+£${(whale.leader.totalBuyIn - whale.runnerUp.totalBuyIn).toFixed(2)} over runner-up`
+        : "no challengers",
+      trend: whale.leader.volumeTrend,
+      trendPositive: true,
+    },
+    {
+      id: 4, title: "The Pit", subtext: "Took the worst beating in a single night.",
+      categorySlug: "the-tank",
+      player: tank.leader.name,
+      value: formatSigned(tank.leader.worstSingleNet),
+      icon: Anchor, valColor: "text-red-400",
+      themeColor: "text-red-400", themeRgb: "248,113,113",
+      runnerUp: tank.runnerUp
+        ? { name: tank.runnerUp.name, value: formatSigned(tank.runnerUp.worstSingleNet) }
+        : { name: "—", value: "—" },
+      lead: `${tank.leader.worstSingleDate} session`,
+      trend: tank.leader.worstTrend,
+      trendPositive: false,
+    },
+    {
+      id: 5, title: "Food Gremlin", subtext: "Eats more than they play.",
+      categorySlug: "the-vacuum",
+      player: vacuum.leader.name,
+      value: `£${vacuum.leader.totalFood.toFixed(2)}`,
+      icon: Pizza, valColor: "text-orange-400",
+      themeColor: "text-orange-400", themeRgb: "251,146,60",
+      runnerUp: vacuum.runnerUp
+        ? { name: vacuum.runnerUp.name, value: `£${vacuum.runnerUp.totalFood.toFixed(2)}` }
+        : { name: "—", value: "—" },
+      lead: vacuum.runnerUp
+        ? `+£${(vacuum.leader.totalFood - vacuum.runnerUp.totalFood).toFixed(2)} over runner-up`
+        : "no challengers",
+      trend: vacuum.leader.foodTrend,
+      trendPositive: true,
+    },
+    {
+      id: 6, title: "Part of the Furniture", subtext: "Never misses a session — practically lives at the table.",
+      categorySlug: "the-grinder",
+      player: grinder.leader.name,
+      value: `${grinder.leader.sessions} Session${grinder.leader.sessions === 1 ? "" : "s"}`,
+      icon: Timer, valColor: "text-blue-400",
+      themeColor: "text-blue-400", themeRgb: "96,165,250",
+      runnerUp: grinder.runnerUp
+        ? { name: grinder.runnerUp.name, value: String(grinder.runnerUp.sessions) }
+        : { name: "—", value: "—" },
+      lead: grinder.tied
+        ? `tied with ${lifetimeStats
+            .filter((p) => p.sessions === grinder.leader.sessions && p.name !== grinder.leader.name)
+            .map((p) => p.name)
+            .slice(0, 2)
+            .join(" & ") || "—"}`
+        : grinder.runnerUp
+          ? `+${grinder.leader.sessions - grinder.runnerUp.sessions} over runner-up`
+          : "no challengers",
+      trend: grinder.leader.sessionCountTrend,
+      trendPositive: true,
+    },
+    {
+      id: 7, title: "Cardiac Episode", subtext: "Wild swings between best and worst nights.",
+      categorySlug: "the-maniac",
+      player: maniac.leader.name,
+      value: `£${maniac.leader.swing.toFixed(2)} Swing`,
+      icon: Zap, valColor: "text-purple-400",
+      themeColor: "text-purple-400", themeRgb: "192,132,252",
+      runnerUp: maniac.runnerUp
+        ? { name: maniac.runnerUp.name, value: `£${maniac.runnerUp.swing.toFixed(2)}` }
+        : { name: "—", value: "—" },
+      lead: `${formatSigned(maniac.leader.worstSingleNet)} to ${formatSigned(maniac.leader.bestSingleNet)}`,
+      trend: maniac.leader.swingTrend,
+      trendPositive: true,
+    },
+  ];
+})();
+
+// Lifetime poker net per player for the dashboard chart (cash-out minus
+// buy-in, food settled separately). `magnitude` is what Recharts uses for
+// the bar height so every stack grows up from the same £0 baseline;
+// `profit` keeps the sign so the chip shape can colour itself green / red
+// and the tooltip can show the real value. Sorted by profit descending so
+// the biggest winner sits on the left.
+const trueDataArray = lifetimeStats
+  .map((p) => ({
+    name: p.name,
+    profit: p.netLifetime,
+    magnitude: Math.abs(p.netLifetime),
+  }))
+  .sort((a, b) => b.profit - a.profit);
 
 // Derive all headline numbers from `historicalGames` so they stay accurate
 // when sessions are added or removed.
 const totalVolume = historicalGames.reduce((sum, g) => sum + g.totalPot, 0);
-const uniquePlayerCount = new Set(
-  historicalGames.flatMap((g) => g.players.map((p) => p.name)),
-).size;
+const seedPlayerNamesLower = new Set(
+  historicalGames.flatMap((g) => g.players.map((p) => p.name.toLowerCase())),
+);
+const uniquePlayerCount = seedPlayerNamesLower.size;
 const biggestGame = historicalGames.reduce(
   (best, g) => (g.totalPot > (best?.totalPot ?? 0) ? g : best),
   historicalGames[0],
@@ -282,6 +496,33 @@ export default function Dashboard() {
   const isMounted = useIsMounted();
   const liveGameId = useLiveGameId();
   const reduceMotion = useReducedMotion();
+
+  // Extra players that exist on /players but aren't in seed history — fresh
+  // signups (Supabase `users` table) and locally-added test accounts. Without
+  // this the headline "Players" tile drifts out of sync with the roster as
+  // soon as someone signs up, since `uniquePlayerCount` is static seed-only.
+  // Initialised to 0 so SSR markup matches the first client render, then
+  // bumped after mount once async data resolves.
+  const [extraPlayerCount, setExtraPlayerCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const sb = createSupabaseBrowserClient();
+      const registered = await loadRegisteredPlayers(sb);
+      if (cancelled) return;
+      const extraNames = new Set<string>();
+      registered.forEach((_displayName, lower) => {
+        if (!seedPlayerNamesLower.has(lower)) extraNames.add(lower);
+      });
+      getStoredPlayers().forEach((p) => {
+        const lower = p.name.toLowerCase();
+        if (!seedPlayerNamesLower.has(lower)) extraNames.add(lower);
+      });
+      setExtraPlayerCount(extraNames.size);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const totalPlayerCount = uniquePlayerCount + extraPlayerCount;
 
   // Coarse-pointer detection so we can swap the desktop CSS-marquee for a
   // native horizontal scroller on phones / tablets. Native scroll lets users
@@ -557,10 +798,31 @@ export default function Dashboard() {
         <PollBanner />
       </div>
 
+      {/* Admin-only outstanding-balance summary — self-suppresses for
+          non-admins and for sessions with nothing pending. */}
+      <div className="px-4 md:px-6 xl:px-12 shrink-0">
+        <AdminLedgerSummary />
+      </div>
+
+      {/* Yearly recap banner — self-suppresses outside of the windows
+          where a recap is meaningful. */}
+      <div className="px-4 md:px-6 xl:px-12 shrink-0">
+        <YearlyRecapBanner />
+      </div>
+
       {/* Headline stats */}
       <motion.div variants={sectionVariants} className="px-4 md:px-6 xl:px-12 shrink-0">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-          {headlineStats.map((s, i) => (
+          {headlineStats.map((s, i) => {
+            // The Players card is the only headline whose source of truth
+            // includes client-side data (registered + local extras). Swap in
+            // the live total so the tile matches the /players roster.
+            const isPlayersCard = s.label === "Players";
+            const displayValue = isPlayersCard ? String(totalPlayerCount) : s.value;
+            const displayAriaLabel = isPlayersCard
+              ? `${totalPlayerCount} players. Open roster.`
+              : s.ariaLabel;
+            return (
             <motion.div
               key={s.label}
               initial={{ opacity: 0, y: 8 }}
@@ -570,7 +832,7 @@ export default function Dashboard() {
             >
               <Link
                 href={s.href}
-                aria-label={s.ariaLabel}
+                aria-label={displayAriaLabel}
                 className="h-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-[#39FF14]/40 hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 group"
               >
                 <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
@@ -585,7 +847,7 @@ export default function Dashboard() {
                     {s.label}
                   </p>
                   <p className="text-lg md:text-xl font-black text-white truncate animate-count-pop">
-                    {s.value}
+                    {displayValue}
                   </p>
                 </div>
                 <ChevronRight
@@ -595,7 +857,8 @@ export default function Dashboard() {
                 />
               </Link>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       </motion.div>
 
@@ -766,8 +1029,11 @@ export default function Dashboard() {
           {/* On mobile the chart needs ~70px of x-axis space per player or
               names overlap — so wrap in a horizontal scroller with an explicit
               min-width below md and let users pan to see every label. From md
-              up the chart stretches to fill the panel as before. */}
-          <div className="flex-1 min-h-0 overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              up the chart stretches to fill the panel as before. The
+              relative wrapper hosts a right-edge fade so users see there's
+              more chart hidden off-screen. */}
+          <div className="relative flex-1 min-h-0">
+            <div className="h-full overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div
               className="h-full md:w-full"
               style={{
@@ -852,6 +1118,13 @@ export default function Dashboard() {
               </div>
             )}
             </div>
+            </div>
+            {/* Right-edge fade — mobile only, hints at horizontal scroll when
+                the player list overflows the panel. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-0 right-0 h-full w-8 md:hidden bg-gradient-to-l from-[#0E1117] to-transparent"
+            />
           </div>
         </motion.div>
 

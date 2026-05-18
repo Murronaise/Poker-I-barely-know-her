@@ -61,11 +61,14 @@ export default function ResetPasswordPage() {
         return;
       }
 
+      // Sign out so they log in fresh with the new password. Await before
+      // showing the success state so a slow signOut can't race the redirect
+      // (previously the 2s timeout sometimes fired with the old session
+      // still active).
+      await supabase.auth.signOut();
       setDone(true);
       setLoading(false);
-      // Sign out so they log in fresh with the new password.
-      await supabase.auth.signOut();
-      setTimeout(() => router.push("/login?message=Password+updated.+Please+log+in."), 2000);
+      setTimeout(() => router.push("/login?message=Password+updated.+Please+log+in."), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setLoading(false);

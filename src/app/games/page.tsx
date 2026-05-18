@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { historicalGames } from "@/lib/historical-games";
-import { getEffectiveHistoricalGames } from "@/lib/game-store";
+import { getEffectiveHistoricalGames, getEffectiveHistoricalGamesWith } from "@/lib/game-store";
+import { getDeletedGameIds } from "@/lib/local-store";
+import { fetchDeletedGameIds } from "@/lib/soft-delete-db";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isAdmin } from "@/lib/auth";
 import { useState, useEffect, useMemo } from "react";
@@ -29,10 +31,26 @@ export default function GamesIndexPage() {
   const [isAdminUser, setIsAdminUser] = useState(false);
   const supabase = createSupabaseBrowserClient();
 
-  // Load effective games (with localStorage deletes/patches) on mount.
+  // Load effective games (with localStorage deletes/patches) on mount,
+  // then merge in the Supabase-synced deleted set so a delete made on
+  // another device propagates to this one.
   useEffect(() => {
+    let cancelled = false;
+    // Synchronous first pass — local overlays only, so the list isn't blank
+    // while we wait for Supabase.
     setGames(getEffectiveHistoricalGames());
-  }, []);
+    (async () => {
+      const remoteDeleted = await fetchDeletedGameIds(supabase);
+      if (cancelled) return;
+      // Union of local + remote so each surface contributes.
+      const merged = new Set<string>([
+        ...remoteDeleted,
+        ...getDeletedGameIds(),
+      ]);
+      setGames(getEffectiveHistoricalGamesWith(merged));
+    })();
+    return () => { cancelled = true; };
+  }, [supabase]);
 
   // Check if user is admin — fast email allow-list first, then DB lookup so
   // users promoted via the `users.is_admin` column also see the admin UI.
@@ -86,9 +104,11 @@ export default function GamesIndexPage() {
     const winner = [...game.players]
       .map(p => ({ ...p, net: p.cashOut - p.buyIn }))
       .sort((a, b) => b.net - a.net)[0];
-    
+
     if (game.date.toLowerCase().includes(q)) return true;
-    if (winner.name.toLowerCase().includes(q)) return true;
+    // `winner` is undefined if the session has no players at all — an empty
+    // historical record. Treat that as a non-match rather than crashing.
+    if (winner && winner.name.toLowerCase().includes(q)) return true;
     if (game.players.some(p => p.name.toLowerCase().includes(q))) return true;
     return false;
   }), [games, searchQuery]);
@@ -197,7 +217,7 @@ export default function GamesIndexPage() {
             filteredGames.map((game) => {
             const winner = [...game.players]
               .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
-              .sort((a, b) => b.net - a.net)[0];
+              .sort((a, b) => b.net - a.net)[0] ?? null;
             return (
               <Link
                 key={game.id}
@@ -246,13 +266,19 @@ export default function GamesIndexPage() {
                   <Crown size={14} className="text-yellow-400 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Winner</p>
-                    <p className="text-base font-bold text-yellow-400 truncate">
-                      {winner.name}{" "}
-                      <span className="text-white/90">£{winner.cashOut.toFixed(2)}</span>
-                    </p>
-                    <p className="text-xs text-[#39FF14] font-bold tabular-nums">
-                      +£{winner.net.toFixed(2)} profit
-                    </p>
+                    {winner ? (
+                      <>
+                        <p className="text-base font-bold text-yellow-400 truncate">
+                          {winner.name}{" "}
+                          <span className="text-white/90">£{winner.cashOut.toFixed(2)}</span>
+                        </p>
+                        <p className="text-xs text-[#39FF14] font-bold tabular-nums">
+                          +£{winner.net.toFixed(2)} profit
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-base font-bold text-white/40">No players</p>
+                    )}
                   </div>
                 </div>
 

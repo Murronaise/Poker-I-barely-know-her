@@ -19,6 +19,11 @@ export function validatePlayerName(raw: string): string | null {
   if (!PLAYER_NAME_REGEX.test(name)) {
     return "Player name can only contain letters, numbers, spaces, hyphens, and underscores.";
   }
+  // Reject runs of separator chars — "John  Doe" or "Toby--" render oddly and
+  // are almost always typos rather than intentional.
+  if (/[ _-]{2,}/.test(name)) {
+    return "Player name can't contain consecutive spaces, hyphens, or underscores.";
+  }
   return null;
 }
 

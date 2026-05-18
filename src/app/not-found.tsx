@@ -9,7 +9,7 @@ export default function NotFound() {
           <Spade size={28} className="text-[#39FF14]" />
         </div>
 
-        <h1 className="text-7xl font-black tracking-tighter text-shimmer mb-3">
+        <h1 className="text-7xl font-black tracking-tighter text-shimmer mb-3" aria-label="Error code 404 — page not found">
           404
         </h1>
 

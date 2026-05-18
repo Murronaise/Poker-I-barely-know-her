@@ -22,6 +22,13 @@ export const DEFAULT_VENUE = "Toby's House";
 // their share of the food. Surfaced in the settlement breakdown so it's
 // obvious where the money goes.
 export const FOOD_PAYER = "Toby";
+// The "admin" — every non-admin player's poker buy-in / cash-out flows
+// through this account at end-of-game (admin-collects-all model from
+// AGENTS.md). Today this is Toby (same person who fronts the food), but
+// keeping the two constants separate lets us decouple them later without
+// rewriting calcSettlements; the rendering layer already handles the case
+// where ADMIN_PLAYER and FOOD_PAYER differ.
+export const ADMIN_PLAYER = "Toby";
 export const defaultAvatarPosition: AvatarPosition = { x: 50, y: 50, scale: 1 };
 
 const readJSON = <T,>(key: string, fallback: T): T => {

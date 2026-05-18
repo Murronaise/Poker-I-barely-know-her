@@ -18,13 +18,17 @@ import {
 import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { toast } from "sonner";
-import { getVenue, setVenue, DEFAULT_VENUE, getBlindTemplates, saveBlindTemplate, deleteBlindTemplate, type BlindTemplate } from "@/lib/local-store";
+import { getVenue, setVenue, DEFAULT_VENUE, getBlindTemplates, saveBlindTemplate, deleteBlindTemplate, getStoredPlayers, type BlindTemplate } from "@/lib/local-store";
 import { historicalGames } from "@/lib/historical-games";
 import { supabase } from "@/lib/supabase";
+import { loadRegisteredPlayers } from "@/lib/registered-players";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-// Derive the picker's roster + win-rate / last-session badges from real
-// session history. Stays in sync if new games land in historical-games.ts.
-const { availablePlayers, playerStats } = (() => {
+// Seed roster + win-rate / last-session badges derived from real session
+// history. Registered (Supabase users) and locally-added players get merged
+// in on mount inside the component — they have no stats, so the badge
+// renderer just skips them.
+const { seedAvailablePlayers, playerStats } = (() => {
   const byName = new Map<string, { date: string; net: number; idx: number }[]>();
   // historicalGames is most-recent-first; preserve idx so we can find the
   // most recent session per player below.
@@ -47,7 +51,7 @@ const { availablePlayers, playerStats } = (() => {
     stats[name] = { winRate, lastResult: Number(mostRecent.net.toFixed(2)) };
   });
 
-  return { availablePlayers: names.sort(), playerStats: stats };
+  return { seedAvailablePlayers: names.sort(), playerStats: stats };
 })();
 
 const blindPresets = [
@@ -64,6 +68,38 @@ export default function CreateGamePage() {
   const router = useRouter();
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
+  // Roster shown in the picker. Starts from session history (SSR-safe) and is
+  // topped up on mount with any registered signups or locally-added players
+  // so brand-new accounts are pickable for their first session.
+  const [availablePlayers, setAvailablePlayers] = useState<string[]>(seedAvailablePlayers);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const sb = createSupabaseBrowserClient();
+      const registered = await loadRegisteredPlayers(sb);
+      if (cancelled) return;
+      const seedLower = new Set(seedAvailablePlayers.map((n) => n.toLowerCase()));
+      const merged = [...seedAvailablePlayers];
+      const seenLower = new Set(seedLower);
+      registered.forEach((displayName, lower) => {
+        if (!seenLower.has(lower)) {
+          merged.push(displayName);
+          seenLower.add(lower);
+        }
+      });
+      getStoredPlayers().forEach((p) => {
+        const lower = p.name.toLowerCase();
+        if (!seenLower.has(lower)) {
+          merged.push(p.name);
+          seenLower.add(lower);
+        }
+      });
+      merged.sort((a, b) => a.localeCompare(b));
+      setAvailablePlayers(merged);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Pull avatar URLs once on mount so the player picker shows real photos
   // instead of the initials fallback. Failures (missing env / offline) silently
@@ -206,8 +242,12 @@ export default function CreateGamePage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto overflow-y-hidden p-3">
-          <div className="flex gap-2.5 min-w-min">
+        {/* Right-edge fade hints that the row scrolls when more players are
+            hidden off-screen. Pointer-events-none so it doesn't intercept
+            taps on the rightmost card. */}
+        <div className="relative">
+          <div className="overflow-x-auto overflow-y-hidden p-3">
+            <div className="flex gap-2.5 min-w-min">
             {availablePlayers.map((player) => {
               const isSelected = selectedPlayers.includes(player);
               return (
@@ -247,7 +287,13 @@ export default function CreateGamePage() {
                 </div>
               );
             })}
+            </div>
           </div>
+          {/* Right-edge gradient — visible only when there's overflow. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-0 right-0 h-full w-10 bg-gradient-to-l from-[#0E1117] to-transparent"
+          />
         </div>
       </div>
 

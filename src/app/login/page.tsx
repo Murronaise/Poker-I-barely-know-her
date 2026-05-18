@@ -80,8 +80,11 @@ export default function LoginPage() {
       // the next page load. Consumed exactly once.
       markFreshLogin();
 
-      router.push("/");
-      router.refresh();
+      // `replace` (not `push`) so the login page isn't in history, and skip
+      // the manual `refresh()` — the Supabase auth listener already triggers
+      // a re-render of server-component data on cookie change, and the
+      // extra refresh occasionally double-renders the dashboard.
+      router.replace("/");
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "An error occurred. Please try again.";
       setError(errorMsg);

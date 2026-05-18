@@ -169,7 +169,30 @@ export default function PlayersIndexPage() {
     fetchAvatars();
   }, []);
 
-  const allPlayers = useMemo(() => [...seedPlayers, ...extraPlayers], [seedPlayers, extraPlayers]);
+  // Synthesize a row for any signed-up account whose player_name isn't already
+  // covered by historical games or the local roster. Without this, a brand-new
+  // signup is invisible on /players until they actually play a session.
+  const registeredOnly = useMemo<PlayerRow[]>(() => {
+    const known = new Set<string>([
+      ...seedPlayers.map((p) => p.name.toLowerCase()),
+      ...extraPlayers.map((p) => p.name.toLowerCase()),
+    ]);
+    return [...registered.entries()]
+      .filter(([lower]) => !known.has(lower))
+      .map(([, displayName]) => ({
+        name: displayName,
+        profit: 0,
+        winRate: 0,
+        sessions: 0,
+        lastPlayed: "Never",
+        trend: [0, 0, 0, 0, 0, 0],
+      }));
+  }, [registered, extraPlayers]);
+
+  const allPlayers = useMemo(
+    () => [...seedPlayers, ...extraPlayers, ...registeredOnly],
+    [extraPlayers, registeredOnly],
+  );
 
   const visiblePlayers = useMemo(() => {
     const filtered = allPlayers.filter((p) =>
@@ -324,7 +347,7 @@ export default function PlayersIndexPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <h3 className="text-lg font-bold text-white/90 group-hover:text-white transition-colors truncate">
+                              <h3 className="text-lg font-bold text-white/90 group-hover:text-white transition-colors line-clamp-2 break-words">
                                 {player.name}
                               </h3>
                               {isRegistered(registered, player.name) && (

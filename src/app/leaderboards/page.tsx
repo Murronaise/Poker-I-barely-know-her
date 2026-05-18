@@ -276,7 +276,7 @@ export default async function LeaderboardsPage({
                   key={row.rank}
                   href={`/profile/${encodeURIComponent(row.player.toLowerCase().replace(/ /g, "-"))}`}
                   aria-label={`Rank ${row.rank}: ${row.player}, ${category.metricLabel} ${row.value}, win rate ${row.winRate}, ${row.sessions} sessions, ${trendLabel}`}
-                  className="block focus:outline-none focus-visible:bg-white/5"
+                  className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#39FF14]/60"
                 >
                   {/* Mobile (<md): single-row card with avatar, name, value
                       stacked next to rank — readable on 360px screens. */}

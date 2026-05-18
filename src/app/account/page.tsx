@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, UserCircle, Save, LogOut, Lock, ChevronRight, BadgeCheck } from "lucide-react";
+import { ChevronLeft, UserCircle, Save, LogOut, Lock, ChevronRight, BadgeCheck, Wallet } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { validatePlayerName, validatePassword, PLAYER_NAME_MAX } from "@/lib/validation";
 import { emitProfileUpdated } from "@/lib/profile-events";
 import { profileSlug } from "@/lib/registered-players";
 import { historicalGames } from "@/lib/historical-games";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { normaliseHandle, PROVIDER_LABEL, type PaymentHandles } from "@/lib/payment-links";
 
 type AccountUser = {
   id: string;
@@ -35,6 +36,16 @@ export default function AccountPage() {
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState("");
 
+  // Payment handles — used by the history page to render tap-to-pay
+  // deep-links next to each settlement row. Stored without a URL prefix or
+  // @ sign; normaliseHandle() strips both on input.
+  const [revolutHandle, setRevolutHandle] = useState("");
+  const [monzoHandle, setMonzoHandle] = useState("");
+  const [paypalHandle, setPaypalHandle] = useState("");
+  const [pmSaving, setPmSaving] = useState(false);
+  const [pmError, setPmError] = useState("");
+  const [pmSuccess, setPmSuccess] = useState("");
+
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -55,7 +66,7 @@ export default function AccountPage() {
 
         const { data: userProfile, error } = await supabase
           .from("users")
-          .select("player_name")
+          .select("player_name, revolut_handle, monzo_handle, paypal_handle")
           .eq("email", data.user.email)
           .single();
 
@@ -75,6 +86,12 @@ export default function AccountPage() {
         } else if (!error && userProfile?.player_name) {
           setPlayerName(userProfile.player_name);
           setOriginalName(userProfile.player_name);
+          // Pre-fill payment handles if they're set. We tolerate the columns
+          // being missing — that's the state before the Phase A migration is
+          // applied, in which case `select(...)` returns undefined keys.
+          setRevolutHandle((userProfile as { revolut_handle?: string | null }).revolut_handle ?? "");
+          setMonzoHandle((userProfile as { monzo_handle?: string | null }).monzo_handle ?? "");
+          setPaypalHandle((userProfile as { paypal_handle?: string | null }).paypal_handle ?? "");
         }
 
         // Pull the avatar from the players table (separate from users — this
@@ -215,6 +232,71 @@ export default function AccountPage() {
       setPwError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setPwSaving(false);
+    }
+  };
+
+  // Validate each non-empty handle, then UPDATE the columns. We deliberately
+  // write back the *normalised* value (no @ prefix, no URL) so the row
+  // converges on a clean canonical form even when the user pastes a full
+  // revolut.me link.
+  const handleSavePaymentHandles = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setPmError("");
+    setPmSuccess("");
+
+    const toCheck: { value: string; label: string }[] = [
+      { value: revolutHandle, label: PROVIDER_LABEL.revolut },
+      { value: monzoHandle, label: PROVIDER_LABEL.monzo },
+      { value: paypalHandle, label: PROVIDER_LABEL.paypal },
+    ];
+    for (const f of toCheck) {
+      if (!f.value.trim()) continue;
+      if (normaliseHandle(f.value) === null) {
+        setPmError(`${f.label} handle looks invalid — letters, numbers, dots, dashes, and underscores only.`);
+        return;
+      }
+    }
+
+    setPmSaving(true);
+    try {
+      const update: Partial<PaymentHandles> & { updated_at: string } = {
+        revolut: revolutHandle.trim() ? normaliseHandle(revolutHandle) : null,
+        monzo: monzoHandle.trim() ? normaliseHandle(monzoHandle) : null,
+        paypal: paypalHandle.trim() ? normaliseHandle(paypalHandle) : null,
+        updated_at: new Date().toISOString(),
+      };
+      // The DB columns are snake_case; the in-memory shape is camelCase.
+      const { error } = await supabase
+        .from("users")
+        .update({
+          revolut_handle: update.revolut,
+          monzo_handle: update.monzo,
+          paypal_handle: update.paypal,
+          updated_at: update.updated_at,
+        })
+        .eq("email", user.email);
+      if (error) {
+        // The most likely failure is the migration not being applied yet —
+        // surface that hint specifically so the user knows why.
+        const msg = error.message || "Couldn't save payment handles.";
+        const looksLikeMissingColumn = /column .* does not exist/i.test(msg);
+        setPmError(
+          looksLikeMissingColumn
+            ? "Payment columns aren't set up yet — run the Phase A migration in Supabase, then try again."
+            : msg,
+        );
+        return;
+      }
+      setRevolutHandle(update.revolut ?? "");
+      setMonzoHandle(update.monzo ?? "");
+      setPaypalHandle(update.paypal ?? "");
+      setPmSuccess("Payment handles saved.");
+      setTimeout(() => setPmSuccess(""), 3000);
+    } catch (err) {
+      setPmError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setPmSaving(false);
     }
   };
 
@@ -427,6 +509,100 @@ export default function AccountPage() {
             </button>
           </form>
         </div>
+
+        {/* Payment handles — drives the one-tap pay buttons on each
+            settlement row. All three providers are optional; the buttons
+            only render for the ones we've got. */}
+        <form
+          onSubmit={handleSavePaymentHandles}
+          className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mt-6 flex flex-col"
+          noValidate
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <Wallet size={18} className="text-[#39FF14]" />
+            <h2 className="text-lg font-black uppercase">Payment handles</h2>
+          </div>
+          <p className="text-xs text-white/40 mb-5">
+            Settlement rows show a tap-to-pay button for each handle you fill in.
+            Paste your username or the full link — we&apos;ll clean it up.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-white/50 uppercase mb-2 tracking-widest">
+                Revolut
+              </label>
+              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 focus-within:border-[#39FF14] focus-within:ring-1 focus-within:ring-[#39FF14]/50 transition-colors">
+                <span className="text-white/30 text-sm shrink-0">revolut.me/</span>
+                <input
+                  type="text"
+                  value={revolutHandle}
+                  onChange={(e) => { setRevolutHandle(e.target.value); setPmError(""); }}
+                  placeholder="handle"
+                  maxLength={64}
+                  autoComplete="off"
+                  className="flex-1 bg-transparent text-white placeholder-white/30 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-white/50 uppercase mb-2 tracking-widest">
+                Monzo
+              </label>
+              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 focus-within:border-[#39FF14] focus-within:ring-1 focus-within:ring-[#39FF14]/50 transition-colors">
+                <span className="text-white/30 text-sm shrink-0">monzo.me/</span>
+                <input
+                  type="text"
+                  value={monzoHandle}
+                  onChange={(e) => { setMonzoHandle(e.target.value); setPmError(""); }}
+                  placeholder="handle"
+                  maxLength={64}
+                  autoComplete="off"
+                  className="flex-1 bg-transparent text-white placeholder-white/30 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-white/50 uppercase mb-2 tracking-widest">
+                PayPal
+              </label>
+              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 focus-within:border-[#39FF14] focus-within:ring-1 focus-within:ring-[#39FF14]/50 transition-colors">
+                <span className="text-white/30 text-sm shrink-0">paypal.me/</span>
+                <input
+                  type="text"
+                  value={paypalHandle}
+                  onChange={(e) => { setPaypalHandle(e.target.value); setPmError(""); }}
+                  placeholder="handle"
+                  maxLength={64}
+                  autoComplete="off"
+                  className="flex-1 bg-transparent text-white placeholder-white/30 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {pmError && (
+            <div className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3 mt-4">
+              <p className="text-sm font-semibold text-red-400">{pmError}</p>
+            </div>
+          )}
+          {pmSuccess && (
+            <div className="bg-[#39FF14]/10 border border-[#39FF14]/30 rounded-lg px-4 py-3 mt-4">
+              <p className="text-sm font-semibold text-[#39FF14]">{pmSuccess}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={pmSaving}
+            className="w-full sm:w-auto sm:self-start bg-[#39FF14]/20 hover:bg-[#39FF14]/30 border border-[#39FF14]/50 text-[#39FF14] font-black uppercase text-sm py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-6"
+          >
+            <Save size={16} />
+            {pmSaving ? "Saving..." : "Save Payment Handles"}
+          </button>
+        </form>
 
         {/* Session info + logout */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mt-6">

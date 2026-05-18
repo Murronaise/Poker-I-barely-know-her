@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, Check, X, HelpCircle, ArrowRight } from "lucide-react";
+import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   Poll, PollOption, Rsvp, PollWithDetails, RsvpResponse,
@@ -116,19 +117,26 @@ export default function PollLoginPrompt() {
   const setVote = async (optionId: string, response: RsvpResponse) => {
     if (!poll || busy) return;
     setBusy(true);
+    // Snapshot the prior vote so we can revert the optimistic UI update
+    // if the network call fails.
+    const previous = voted[optionId];
     try {
       const { data } = await supabase.auth.getUser();
-      if (!data.user) return;
+      if (!data.user) {
+        toast.error("You need to be logged in to vote.");
+        return;
+      }
 
       // Toggle off if clicking the same response again.
       const current = voted[optionId];
       if (current === response) {
-        await supabase
+        const { error } = await supabase
           .from("rsvps")
           .delete()
           .eq("poll_id", poll.id)
           .eq("poll_option_id", optionId)
           .eq("user_id", data.user.id);
+        if (error) throw error;
         setVoted((v) => {
           const next = { ...v };
           delete next[optionId];
@@ -138,20 +146,33 @@ export default function PollLoginPrompt() {
         // Upsert: try update, fall back to insert. Simpler than a real
         // upsert because rsvps has a UNIQUE(poll_option_id, user_id) — we
         // just delete-then-insert.
-        await supabase
+        const { error: deleteError } = await supabase
           .from("rsvps")
           .delete()
           .eq("poll_id", poll.id)
           .eq("poll_option_id", optionId)
           .eq("user_id", data.user.id);
-        await supabase.from("rsvps").insert({
+        if (deleteError) throw deleteError;
+        const { error: insertError } = await supabase.from("rsvps").insert({
           poll_id: poll.id,
           poll_option_id: optionId,
           user_id: data.user.id,
           response,
         });
+        if (insertError) throw insertError;
         setVoted((v) => ({ ...v, [optionId]: response }));
       }
+    } catch (err) {
+      // Revert the optimistic state so the UI doesn't lie about a vote
+      // that didn't actually persist.
+      setVoted((v) => {
+        const next = { ...v };
+        if (previous === undefined) delete next[optionId];
+        else next[optionId] = previous;
+        return next;
+      });
+      const msg = err instanceof Error ? err.message : "Couldn't save your vote.";
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

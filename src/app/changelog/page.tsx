@@ -141,6 +141,16 @@ export default function ChangelogPage() {
 
         {/* Entries */}
         <div className="flex flex-col gap-4">
+          {authResolved && visibleEntries.length === 0 && (
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
+              <p className="text-sm font-bold tracking-widest uppercase text-white/50">
+                No public updates yet
+              </p>
+              <p className="text-xs text-white/30 mt-2">
+                Check back after the next release.
+              </p>
+            </div>
+          )}
           {visibleEntries.map((entry, idx) => {
             const isLatest = idx === 0;
             const categoryGroups = groupItemsByCategory(entry.items);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense, useRef, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useParams } from "next/navigation";
 import Link from "next/link";
 import {
   Play,
@@ -24,7 +24,18 @@ import {
   Users,
 } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import { clearLiveGameId } from "@/lib/live-game-store";
+import {
+  clearLiveGameId,
+  saveLiveGameState,
+  loadLiveGameState,
+  type LiveGameSnapshot,
+} from "@/lib/live-game-store";
+import {
+  playLevelUpSound,
+  playBustSound,
+  playRebuySound,
+  playFinalizeSound,
+} from "@/lib/sound-pack";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -50,6 +61,13 @@ const REBUY_PRESETS = [10, 20, 50];
 
 function ActiveGameContent() {
   const searchParams = useSearchParams();
+  const routeParams = useParams<{ id?: string }>();
+  const gameId =
+    typeof routeParams?.id === "string"
+      ? routeParams.id
+      : Array.isArray(routeParams?.id)
+        ? routeParams.id[0]
+        : "";
 
   const playersQuery = searchParams.getAll("players");
   const hasPlayersInUrl = playersQuery.length > 0;
@@ -60,9 +78,22 @@ function ActiveGameContent() {
 
   const initialMinutes = parseInt(timerQuery, 10);
 
+  // Load any saved snapshot for this game id once at mount. If present, it
+  // overrides the URL-derived initial state so a hard refresh mid-session
+  // restores buy-ins, busts, rebuys, the event log, and the timer instead of
+  // resetting them. SSR can't read sessionStorage, so the guard keeps the
+  // initializer pure on the server side.
+  const [restored] = useState<LiveGameSnapshot | null>(() => {
+    if (typeof window === "undefined" || !gameId) return null;
+    return loadLiveGameState(gameId);
+  });
+
   // Timer State
-  const [maxTime, setMaxTime] = useState(initialMinutes * 60);
-  const [timeLeft, setTimeLeft] = useState(maxTime);
+  const [maxTime, setMaxTime] = useState(restored?.timer.maxTime ?? initialMinutes * 60);
+  const [timeLeft, setTimeLeft] = useState(restored?.timer.timeLeft ?? maxTime);
+  // Don't auto-resume a running timer after a refresh — the user wasn't at
+  // the keyboard for however long, so making the wall clock catch up would
+  // be wrong. They can press Space to resume when they're back.
   const [isRunning, setIsRunning] = useState(false);
 
   // Config Override State
@@ -72,27 +103,38 @@ function ActiveGameContent() {
   const [editTimerMinutes, setEditTimerMinutes] = useState<number | string>(initialMinutes);
 
   // Blind State
-  const [blindLevel, setBlindLevel] = useState(1);
-  const [smallBlind, setSmallBlind] = useState(parseFloat(sbQuery));
-  const [bigBlind, setBigBlind] = useState(parseFloat(bbQuery));
+  const [blindLevel, setBlindLevel] = useState(restored?.blinds.blindLevel ?? 1);
+  const [smallBlind, setSmallBlind] = useState(
+    restored?.blinds.smallBlind ?? parseFloat(sbQuery),
+  );
+  const [bigBlind, setBigBlind] = useState(
+    restored?.blinds.bigBlind ?? parseFloat(bbQuery),
+  );
 
   // Player State — every player starts with the default buy-in supplied on
   // the create form (or 0 to leave blank). Players can still rebuy or edit.
-  const [players, setPlayers] = useState<PlayerState[]>(
-    playersQuery.length > 0
-      ? playersQuery.map((p) => ({ name: p, buyIn: buyInQuery, foodSpend: 0, cashOut: null }))
-      : [
-          { name: "Player A", buyIn: buyInQuery, foodSpend: 0, cashOut: null },
-          { name: "Player B", buyIn: buyInQuery, foodSpend: 0, cashOut: null },
-        ]
-  );
+  const [players, setPlayers] = useState<PlayerState[]>(() => {
+    if (restored) return restored.players;
+    if (playersQuery.length > 0) {
+      return playersQuery.map((p) => ({ name: p, buyIn: buyInQuery, foodSpend: 0, cashOut: null }));
+    }
+    return [
+      { name: "Player A", buyIn: buyInQuery, foodSpend: 0, cashOut: null },
+      { name: "Player B", buyIn: buyInQuery, foodSpend: 0, cashOut: null },
+    ];
+  });
 
   const [showResults, setShowResults] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [events, setEvents] = useState<GameEvent[]>([
-    { id: 0, type: "start", label: "Session started", ts: new Date() },
-  ]);
-  const nextEventId = useRef(1);
+  const [events, setEvents] = useState<GameEvent[]>(() => {
+    if (restored) {
+      return restored.events.map((e) => ({ ...e, ts: new Date(e.ts) }));
+    }
+    return [{ id: 0, type: "start", label: "Session started", ts: new Date() }];
+  });
+  const nextEventId = useRef(
+    restored ? Math.max(0, ...restored.events.map((e) => e.id)) + 1 : 1,
+  );
   const addEvent = (ev: Omit<GameEvent, "id" | "ts">) => {
     setEvents((prev) => [
       { ...ev, id: nextEventId.current++, ts: new Date() },
@@ -103,28 +145,10 @@ function ActiveGameContent() {
   const [isMuted, setIsMuted] = useState(false);
   const [sessionSeconds, setSessionSeconds] = useState(0);
 
-  const playMoneySound = () => {
-    if (isMutedRef.current) return;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
-      const times = [0, 0.07, 0.14, 0.22, 0.30];
-      const freqs = [880, 1100, 990, 1320, 880];
-      times.forEach((t, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.setValueAtTime(freqs[i], ctx.currentTime + t);
-        osc.frequency.exponentialRampToValueAtTime(freqs[i] * 0.6, ctx.currentTime + t + 0.12);
-        gain.gain.setValueAtTime(0.13, ctx.currentTime + t);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.18);
-        osc.start(ctx.currentTime + t);
-        osc.stop(ctx.currentTime + t + 0.18);
-      });
-    } catch { /* ignore */ }
-  };
+  // All sound cues now live in lib/sound-pack.ts; here we just wrap them
+  // with the mute toggle so the call sites stay terse.
+  const muted = () => isMutedRef.current;
+  const playMoneySound = () => playLevelUpSound({ muted: muted() });
 
   // Fetch Avatars
   useEffect(() => {
@@ -145,6 +169,28 @@ function ActiveGameContent() {
     }
     fetchAvatars();
   }, []);
+
+  // Persist the live game so a hard refresh, accidental tab close, or
+  // browser-bar tap doesn't wipe the in-progress session. We snapshot every
+  // time the user-visible state changes (rebuy, bust, blind change, etc.).
+  // The timer's per-second `timeLeft` tick is intentionally excluded so we
+  // don't write to sessionStorage every second; on refresh the timer is
+  // paused anyway and the level + blinds are restored.
+  useEffect(() => {
+    if (showResults || !gameId) return;
+    const snapshot: LiveGameSnapshot = {
+      v: 1,
+      players,
+      events: events.map((e) => ({ ...e, ts: e.ts.toISOString() })),
+      timer: { maxTime, timeLeft, isRunning: false },
+      blinds: { smallBlind, bigBlind, blindLevel },
+    };
+    saveLiveGameState(gameId, snapshot);
+    // `timeLeft` is intentionally omitted from the dependency list — it ticks
+    // every second and would otherwise spam sessionStorage. The restored
+    // value is the level's full duration anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId, players, events, maxTime, smallBlind, bigBlind, blindLevel, showResults]);
 
   // Session elapsed clock — capture the start time inside the effect so we
   // never read `Date.now()` during render (impure) or touch a ref outside an
@@ -308,11 +354,19 @@ function ActiveGameContent() {
     setPlayers((prev) =>
       prev.map((p) => {
         if (p.name !== name) return p;
+        // Clamp to >= 0 across the board — there's no legitimate negative
+        // buy-in, cash-out, or food spend, and accepting one silently lets
+        // the chip-mismatch check downstream paper over a typo by
+        // proportional rescaling.
         if (field === "cashOut") {
-          const num = val === "" ? null : parseFloat(val);
+          if (val === "") return { ...p, cashOut: null };
+          const num = parseFloat(val);
+          if (!Number.isFinite(num) || num < 0) return { ...p, cashOut: 0 };
           return { ...p, cashOut: num };
         }
-        const num = val === "" ? 0 : parseFloat(val) || 0;
+        if (val === "") return { ...p, [field]: 0 };
+        const num = parseFloat(val);
+        if (!Number.isFinite(num) || num < 0) return { ...p, [field]: 0 };
         return { ...p, [field]: num };
       })
     );
@@ -320,6 +374,7 @@ function ActiveGameContent() {
 
   const bustPlayer = (name: string) => {
     setPlayers((prev) => prev.map((p) => (p.name === name ? { ...p, cashOut: 0 } : p)));
+    playBustSound({ muted: muted() });
     toast(`${name} busted out — cash-out set to £0.`, { icon: "💀" });
     addEvent({ type: "bust", player: name, label: `${name} busted out` });
   };
@@ -335,6 +390,7 @@ function ActiveGameContent() {
         p.name === name ? { ...p, buyIn: Number((p.buyIn + amount).toFixed(2)) } : p
       )
     );
+    playRebuySound({ muted: muted() });
     addEvent({ type: "rebuy", player: name, amount, label: `${name} rebuyed +£${amount}` });
   };
 
@@ -385,6 +441,7 @@ function ActiveGameContent() {
     }
 
     setShowResults(true);
+    playFinalizeSound({ muted: muted() });
     clearLiveGameId();
   };
 
@@ -539,7 +596,11 @@ function ActiveGameContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players, chipLeader?.name, stillIn.length]);
 
-  if (!hasPlayersInUrl) {
+  // The "no players" fallback only fires when the URL is empty AND we don't
+  // have a restored snapshot — otherwise a hard refresh that loses the
+  // query string but kept the sessionStorage snapshot would dump the user
+  // back to the create-game CTA and lose their session.
+  if (!hasPlayersInUrl && !restored) {
     return (
       <main className="flex-1 min-h-0 flex items-center justify-center px-6 py-10 text-[#FAFAFA]">
         <div className="max-w-md w-full text-center bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
@@ -580,45 +641,52 @@ function ActiveGameContent() {
             </div>
           </div>
 
+          {/* Mobile portrait can't fit 5 money columns side-by-side. Wrapping
+              the grid in a horizontal scroll container with a min-width keeps
+              every column readable instead of being crushed off-screen. */}
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-            <div className="grid grid-cols-5 gap-4 px-5 py-3 border-b border-white/10 bg-black/40 text-sm font-bold text-white/40 uppercase tracking-wider">
-              <div>Player</div>
-              <div className="text-right">Buy-in</div>
-              <div className="text-right">Cash Out</div>
-              <div className="text-right border-x border-white/10 px-3">Game Profit</div>
-              <div className="text-right text-[#39FF14]">Total w/ Food</div>
-            </div>
-            <div className="divide-y divide-white/5">
-              {ranked.map((p, i) => {
-                const gameNet = (p.cashOut || 0) - p.buyIn;
-                return (
-                  <div
-                    key={p.name}
-                    className="grid grid-cols-5 gap-4 px-5 py-3 items-center hover:bg-white/5 transition-colors"
-                  >
-                    <div className="font-bold flex items-center gap-2">
-                      {i === 0 && <Crown size={14} className="text-yellow-400" />}
-                      <span>{p.name}</span>
-                    </div>
-                    <div className="text-right text-white/70 text-base">£{p.buyIn.toFixed(2)}</div>
-                    <div className="text-right text-white/70 text-base">£{(p.cashOut || 0).toFixed(2)}</div>
-                    <div
-                      className={`text-right border-x border-white/10 px-3 font-black ${
-                        gameNet >= 0 ? "text-white" : "text-red-400"
-                      }`}
-                    >
-                      {gameNet > 0 ? "+" : ""}£{gameNet.toFixed(2)}
-                    </div>
-                    <div
-                      className={`text-right font-black text-xl ${
-                        p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
-                      }`}
-                    >
-                      {p.net > 0 ? "+" : ""}£{p.net.toFixed(2)}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <div className="grid grid-cols-5 gap-4 px-5 py-3 border-b border-white/10 bg-black/40 text-sm font-bold text-white/40 uppercase tracking-wider">
+                  <div>Player</div>
+                  <div className="text-right">Buy-in</div>
+                  <div className="text-right">Cash Out</div>
+                  <div className="text-right border-x border-white/10 px-3">Game Profit</div>
+                  <div className="text-right text-[#39FF14]">Total w/ Food</div>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {ranked.map((p, i) => {
+                    const gameNet = (p.cashOut || 0) - p.buyIn;
+                    return (
+                      <div
+                        key={p.name}
+                        className="grid grid-cols-5 gap-4 px-5 py-3 items-center hover:bg-white/5 transition-colors"
+                      >
+                        <div className="font-bold flex items-center gap-2">
+                          {i === 0 && <Crown size={14} className="text-yellow-400" />}
+                          <span>{p.name}</span>
+                        </div>
+                        <div className="text-right text-white/70 text-base">£{p.buyIn.toFixed(2)}</div>
+                        <div className="text-right text-white/70 text-base">£{(p.cashOut || 0).toFixed(2)}</div>
+                        <div
+                          className={`text-right border-x border-white/10 px-3 font-black ${
+                            gameNet >= 0 ? "text-white" : "text-red-400"
+                          }`}
+                        >
+                          {gameNet > 0 ? "+" : ""}£{gameNet.toFixed(2)}
+                        </div>
+                        <div
+                          className={`text-right font-black text-xl ${
+                            p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
+                          }`}
+                        >
+                          {p.net > 0 ? "+" : ""}£{p.net.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 

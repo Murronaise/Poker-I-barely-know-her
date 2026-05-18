@@ -114,7 +114,19 @@ export default function SignupPage() {
       });
 
       if (signupError) {
-        setError(signupError.message || "Signup failed. Please try again.");
+        // The pre-check can lose a race against another concurrent signup;
+        // in that case Postgres throws a unique-constraint error that
+        // Supabase surfaces as "duplicate key value" / 23505. Translate it
+        // into something the user can act on.
+        const raw = signupError.message ?? "";
+        const isDuplicateName =
+          raw.toLowerCase().includes("duplicate") &&
+          raw.toLowerCase().includes("player_name");
+        setError(
+          isDuplicateName
+            ? "That name was just taken by someone else — please pick a different one."
+            : raw || "Signup failed. Please try again.",
+        );
         setLoading(false);
         return;
       }
