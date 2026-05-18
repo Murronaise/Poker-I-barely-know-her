@@ -35,7 +35,10 @@ export default function AdminGameNotes({ gameId, initialNote }: Props) {
   // doesn't sit there permanently.
   useEffect(() => {
     if (status !== "saved") return;
-    const t = window.setTimeout(() => setStatus("idle"), 1800);
+    // 4s is long enough that an admin glancing back after typing still
+    // sees the confirmation; the previous 1.8s vanished before they
+    // looked up.
+    const t = window.setTimeout(() => setStatus("idle"), 4000);
     return () => window.clearTimeout(t);
   }, [status]);
 
@@ -128,7 +131,10 @@ export default function AdminGameNotes({ gameId, initialNote }: Props) {
             <span className="text-[10px] font-bold tracking-widest uppercase text-white/30 tabular-nums">
               {note.length}/{MAX_LENGTH}
             </span>
-            <div className="flex items-center gap-2">
+            {/* aria-live so screen readers hear the save status changes;
+                aria-busy on the wrapper communicates the in-flight state to
+                assistive tech without a separate announcement per status. */}
+            <div className="flex items-center gap-2" role="status" aria-live="polite" aria-busy={status === "saving"}>
               {status === "saving" && (
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase text-white/60">
                   <Loader2 size={11} className="animate-spin" /> Saving

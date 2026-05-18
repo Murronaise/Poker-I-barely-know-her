@@ -70,6 +70,16 @@ export default function GamePhotos({ gameId, players, canUpload }: Props) {
       setUploadingFor(null);
       return;
     }
+    // Detect offline up front — without this, a Supabase upload from a
+    // dropped network hits the catch block with a generic "fetch failed"
+    // and the user got a misleading "bucket missing" hint. navigator.onLine
+    // is a hint, not a guarantee, but it catches the common case
+    // (aeroplane mode, lost wifi) cleanly.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      toast.error("You're offline — reconnect, then try again.");
+      setUploadingFor(null);
+      return;
+    }
     try {
       const photo = await uploadGamePhoto(gameId, file, {
         playerName: tag ?? undefined,
@@ -80,12 +90,15 @@ export default function GamePhotos({ gameId, players, canUpload }: Props) {
       const msg = err instanceof Error ? err.message : "Couldn't upload the photo.";
       const looksLikeMissingBucket = /bucket not found/i.test(msg);
       const looksLikeMissingColumn = /column .* does not exist/i.test(msg);
+      const looksLikeNetwork = /fetch|network|failed to fetch/i.test(msg);
       toast.error(
         looksLikeMissingBucket
           ? "game-photos bucket missing — run the Phase E migration in Supabase."
           : looksLikeMissingColumn
             ? "player_name column missing — run the Phase E.2 migration in Supabase."
-            : msg,
+            : looksLikeNetwork
+              ? "Network glitch — please try again."
+              : msg,
       );
     } finally {
       setUploadingFor(null);

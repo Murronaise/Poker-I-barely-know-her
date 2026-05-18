@@ -413,9 +413,15 @@ function ActiveGameContent() {
     }
 
     if (Math.abs(totalBuyIns - totalCashOuts) > 0.01) {
+      // Stable toast id so a rapid double-tap of the "Auto-Balance" action
+      // can't run the rescale twice — sonner's `id` deduplicates concurrent
+      // toasts with the same key, and we dismiss after the action fires so
+      // a follow-up tap has nothing to click.
+      const toastId = "chip-mismatch";
       toast.error(
         `CHIP MISMATCH ALERT! \nBuy-ins: £${totalBuyIns.toFixed(2)} | Cash Outs: £${totalCashOuts.toFixed(2)} \nDifference: £${Math.abs(totalBuyIns - totalCashOuts).toFixed(2)}`,
         {
+          id: toastId,
           duration: 12000,
           action: {
             label: "Auto-Balance",
@@ -432,6 +438,7 @@ function ActiveGameContent() {
                     : p
                 )
               );
+              toast.dismiss(toastId);
               toast.success("Cash-outs auto-balanced — please verify and re-finalize.");
             },
           },
@@ -516,9 +523,9 @@ function ActiveGameContent() {
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 font-bold text-white/40 text-sm pointer-events-none">£</span>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  step="0.01"
+                  pattern="[0-9]*[.,]?[0-9]*"
                   value={p.buyIn === 0 ? "" : p.buyIn}
                   onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
                   placeholder="0"
@@ -533,9 +540,9 @@ function ActiveGameContent() {
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 font-bold text-white/40 text-sm pointer-events-none">£</span>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  step="0.01"
+                  pattern="[0-9]*[.,]?[0-9]*"
                   value={p.foodSpend === 0 ? "" : p.foodSpend}
                   onChange={(e) => setPlayerInput(p.name, "foodSpend", e.target.value)}
                   placeholder="0"
@@ -548,9 +555,9 @@ function ActiveGameContent() {
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 font-bold text-white/40 text-sm pointer-events-none">£</span>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  step="0.01"
+                  pattern="[0-9]*[.,]?[0-9]*"
                   value={p.cashOut === null ? "" : p.cashOut}
                   onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
                   placeholder="—"
@@ -639,8 +646,9 @@ function ActiveGameContent() {
                 £
               </span>
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
                 value={p.buyIn === 0 ? "" : p.buyIn}
                 onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
                 placeholder="0"
@@ -675,8 +683,9 @@ function ActiveGameContent() {
                 £
               </span>
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
                 value={p.foodSpend === 0 ? "" : p.foodSpend}
                 onChange={(e) => setPlayerInput(p.name, "foodSpend", e.target.value)}
                 placeholder="0"
@@ -692,8 +701,9 @@ function ActiveGameContent() {
                 £
               </span>
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
                 value={p.cashOut === null ? "" : p.cashOut}
                 onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
                 placeholder="—"
@@ -1118,13 +1128,18 @@ function ActiveGameContent() {
       {/* Edit Config Modal */}
       {showConfig && (
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="config-dialog-title"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6"
+          onClick={() => setShowConfig(false)}
         >
           <motion.div
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
             className="bg-[#0E1117] border border-white/10 rounded-3xl max-w-sm w-full p-6 md:p-7 relative shadow-[0_0_50px_rgba(0,0,0,0.5)] max-h-[90vh] overflow-y-auto"
           >
             <button
@@ -1135,7 +1150,7 @@ function ActiveGameContent() {
               <X size={22} />
             </button>
 
-            <h2 className="text-2xl font-black tracking-tight mb-1 uppercase pr-10">Advance Level</h2>
+            <h2 id="config-dialog-title" className="text-2xl font-black tracking-tight mb-1 uppercase pr-10">Advance Level</h2>
             <p className="text-white/50 mb-1 text-base">Pre-filled at 2× current blinds.</p>
             <p className="text-xs text-white/30 font-mono uppercase tracking-widest mb-5">
               currently £{smallBlind.toFixed(2)} / £{bigBlind.toFixed(2)} · level {blindLevel}
@@ -1148,8 +1163,9 @@ function ActiveGameContent() {
                     Small Blind (£)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
                     value={editSmallBlind}
                     onChange={(e) => setEditSmallBlind(e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
@@ -1160,8 +1176,9 @@ function ActiveGameContent() {
                     Big Blind (£)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
                     value={editBigBlind}
                     onChange={(e) => setEditBigBlind(e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
@@ -1174,7 +1191,9 @@ function ActiveGameContent() {
                   Timer (Minutes)
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={editTimerMinutes}
                   onChange={(e) => setEditTimerMinutes(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all"
@@ -1195,6 +1214,9 @@ function ActiveGameContent() {
       {/* Help Modal */}
       {showHelp && (
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="help-dialog-title"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6"
@@ -1213,7 +1235,7 @@ function ActiveGameContent() {
             >
               <X size={22} />
             </button>
-            <h2 className="text-xl font-black tracking-tight mb-5 uppercase flex items-center gap-3 pr-10">
+            <h2 id="help-dialog-title" className="text-xl font-black tracking-tight mb-5 uppercase flex items-center gap-3 pr-10">
               <Keyboard size={20} className="text-[#39FF14]" /> Shortcuts
             </h2>
             <ul className="space-y-2.5 text-base">

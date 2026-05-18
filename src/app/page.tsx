@@ -833,7 +833,7 @@ export default function Dashboard() {
               <Link
                 href={s.href}
                 aria-label={displayAriaLabel}
-                className="h-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-[#39FF14]/40 hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 group"
+                className="h-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex items-center gap-3 hover:border-[#39FF14]/40 hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#39FF14]/60 group"
               >
                 <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
                   <s.icon className={s.color} size={16} />

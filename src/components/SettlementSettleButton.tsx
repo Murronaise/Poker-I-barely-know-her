@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { togglePlayerSettledDb } from "@/lib/settlements-db";
 import { useIsMounted } from "@/lib/use-hydration";
 import { emitSettlementToggled, onSettlementToggled } from "@/lib/settlement-events";
@@ -66,8 +67,16 @@ export default function SettlementSettleButton({ gameId, playerName, isAdmin, in
       emitSettlementToggled({ gameId, playerName, settled: next });
     } catch (err) {
       // Revert on failure (most likely RLS rejection or network blip).
+      // Surface a toast so the user knows the tick they just made didn't
+      // actually persist — the previous behaviour silently flipped back
+      // and looked like a flaky UI glitch.
       setSettled(previous);
       console.error("[settlement] toggle failed", err);
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Couldn't update settlement — please try again.";
+      toast.error(message);
     } finally {
       setPending(false);
     }

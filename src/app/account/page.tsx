@@ -414,11 +414,11 @@ export default function AccountPage() {
                   disabled
                   className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white/50 cursor-not-allowed"
                 />
-                <p className="text-xs text-white/30 mt-2">Email cannot be changed</p>
+                <p className="text-xs text-white/60 mt-2">Email cannot be changed</p>
               </div>
 
               {profileError && (
-                <div className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3">
+                <div role="alert" aria-live="polite" className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3">
                   <p className="text-sm font-semibold text-red-400">{profileError}</p>
                 </div>
               )}
@@ -487,7 +487,7 @@ export default function AccountPage() {
               </div>
 
               {pwError && (
-                <div className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3">
+                <div role="alert" aria-live="polite" className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3">
                   <p className="text-sm font-semibold text-red-400">{pwError}</p>
                 </div>
               )}
@@ -584,7 +584,7 @@ export default function AccountPage() {
           </div>
 
           {pmError && (
-            <div className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3 mt-4">
+            <div role="alert" aria-live="polite" className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3 mt-4">
               <p className="text-sm font-semibold text-red-400">{pmError}</p>
             </div>
           )}

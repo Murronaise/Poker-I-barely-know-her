@@ -174,7 +174,7 @@ export default function GamesIndexPage() {
         {summary.map((s) => (
           <div
             key={s.label}
-            className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:border-white/20 transition-colors"
+            className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex items-center gap-3 hover:border-white/20 transition-colors"
           >
             <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
               <s.icon className={s.color} size={16} />

@@ -111,23 +111,27 @@ export default async function LeaderboardsPage({
                 : realRank === 2
                   ? "h-[240px] sm:h-[215px] md:h-[240px]"
                   : "h-[230px] sm:h-[200px] md:h-[225px]";
+            // Rank-2 used `gray-300` which sits outside the rest of the
+            // palette (cyan is the canonical "informational" secondary).
+            // Switching to cyan keeps the podium tonally inside the app's
+            // neon vocabulary.
             const accent =
               realRank === 1
                 ? "border-yellow-400/60 shadow-[0_0_40px_rgba(250,204,21,0.3)] bg-gradient-to-b from-yellow-400/15 to-transparent"
                 : realRank === 2
-                  ? "border-gray-300/40 bg-gradient-to-b from-gray-300/10 to-transparent"
+                  ? "border-cyan-400/50 shadow-[0_0_30px_rgba(34,211,238,0.18)] bg-gradient-to-b from-cyan-400/12 to-transparent"
                   : "border-orange-400/40 bg-gradient-to-b from-orange-400/10 to-transparent";
             const rankColor =
               realRank === 1
                 ? "text-yellow-400"
                 : realRank === 2
-                  ? "text-gray-300"
+                  ? "text-cyan-400"
                   : "text-orange-400";
             const borderColor =
               realRank === 1
                 ? "border-yellow-400"
                 : realRank === 2
-                  ? "border-gray-300"
+                  ? "border-cyan-400"
                   : "border-orange-400";
             return (
               <Link
@@ -161,7 +165,7 @@ export default async function LeaderboardsPage({
                         realRank === 1
                           ? "shadow-yellow-400/30"
                           : realRank === 2
-                            ? "shadow-gray-300/20"
+                            ? "shadow-cyan-400/20"
                             : "shadow-orange-400/20"
                       }`}
                     />
@@ -173,7 +177,7 @@ export default async function LeaderboardsPage({
                         realRank === 1
                           ? "shadow-yellow-400/30"
                           : realRank === 2
-                            ? "shadow-gray-300/20"
+                            ? "shadow-cyan-400/20"
                             : "shadow-orange-400/20"
                       }`}
                     />

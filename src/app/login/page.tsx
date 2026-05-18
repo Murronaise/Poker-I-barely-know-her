@@ -137,6 +137,8 @@ export default function LoginPage() {
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
                 required
                 autoComplete="email"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? "login-error" : undefined}
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14]/50 transition-colors"
                 placeholder="you@example.com"
               />
@@ -160,13 +162,15 @@ export default function LoginPage() {
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 required
                 autoComplete="current-password"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? "login-error" : undefined}
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14]/50 transition-colors"
                 placeholder="••••••••"
               />
             </div>
 
             {error && (
-              <div className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3">
+              <div id="login-error" role="alert" aria-live="polite" className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3">
                 <p className="text-sm font-semibold text-red-400">{error}</p>
               </div>
             )}

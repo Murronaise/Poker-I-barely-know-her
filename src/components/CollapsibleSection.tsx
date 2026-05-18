@@ -93,7 +93,10 @@ export default function CollapsibleSection({
       {open && (
         <div
           id={bodyId}
-          className={`px-5 pb-5 pt-1 ${fill ? "flex-1 min-h-0 overflow-auto" : ""}`}
+          // Soft fade-in so the body popping in doesn't feel jumpy. The
+          // .animate-fade-up keyframe is already in globals.css and gets
+          // suppressed under prefers-reduced-motion.
+          className={`px-5 pb-5 pt-1 animate-fade-up ${fill ? "flex-1 min-h-0 overflow-auto" : ""}`}
         >
           {children}
         </div>
