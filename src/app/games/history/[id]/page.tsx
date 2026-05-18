@@ -251,55 +251,66 @@ export default async function HistoricalGamePage({
       {/* Settlement table */}
       <CollapsibleSection title="Results" icon={<Crown size={18} className="text-yellow-400"/>} defaultOpen={false}>
         <div className="overflow-hidden flex flex-col">
-          <div className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 border-b border-white/10 bg-black/40 text-xs md:text-sm font-bold text-white/40 uppercase tracking-wider shrink-0">
-            <div className="col-span-1 text-center">#</div>
-            <div className="col-span-4 md:col-span-3">Player</div>
-            <div className="col-span-2 text-right">Buy-in</div>
-            <div className="hidden md:block col-span-2 text-right">Cash Out</div>
-            <div className="hidden md:block col-span-2 text-right">Food</div>
-            <div className="col-span-5 md:col-span-2 text-right text-[#39FF14]">Profit</div>
-          </div>
+          {/* Portrait phones can't fit six columns side by side, so the
+              previous design hid Cash Out + Food behind a md: breakpoint —
+              which meant you couldn't see whose food cost what without an
+              iPad. Wrapping the whole grid in horizontal scroll with a
+              min-width gives every column a fair share of space and the
+              user can pan right to reach the rest. Match the live-game
+              finalized-results pattern that already does this. */}
+          <div className="overflow-x-auto">
+            <div className="min-w-[720px]">
+              <div className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 border-b border-white/10 bg-black/40 text-xs md:text-sm font-bold text-white/40 uppercase tracking-wider shrink-0">
+                <div className="col-span-1 text-center">#</div>
+                <div className="col-span-3">Player</div>
+                <div className="col-span-2 text-right">Buy-in</div>
+                <div className="col-span-2 text-right">Cash Out</div>
+                <div className="col-span-2 text-right">Food</div>
+                <div className="col-span-2 text-right text-[#39FF14]">Profit</div>
+              </div>
 
-          <div className="divide-y divide-white/5">
-            {ranked.map((p, i) => (
-              <Link
-                key={p.name}
-                href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
-                className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 items-center hover:bg-white/5 transition-colors"
-              >
-              <div className="col-span-1 text-center font-black text-white/50">
-                {i === 0 ? <Crown size={16} className="text-yellow-400 inline" /> : `#${i + 1}`}
+              <div className="divide-y divide-white/5">
+                {ranked.map((p, i) => (
+                  <Link
+                    key={p.name}
+                    href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
+                    className="grid grid-cols-12 gap-3 px-4 md:px-6 py-3 items-center hover:bg-white/5 transition-colors"
+                  >
+                  <div className="col-span-1 text-center font-black text-white/50">
+                    {i === 0 ? <Crown size={16} className="text-yellow-400 inline" /> : `#${i + 1}`}
+                  </div>
+                  <div className="col-span-3 flex items-center gap-2 md:gap-3 min-w-0">
+                    <PlayerAvatar
+                      name={p.name}
+                      avatarUrl={avatarMap[p.name]}
+                      size={44}
+                      className="rounded-full border border-white/10 shrink-0"
+                    />
+                    <span className="font-bold text-sm md:text-base lg:text-lg truncate">{p.name}</span>
+                  </div>
+                  <div className="col-span-2 text-right">
+                    <span className="text-base font-bold text-white/70">£{p.buyIn.toFixed(2)}</span>
+                  </div>
+                  <div className="col-span-2 text-right">
+                    <span className="text-base font-bold text-white/70">£{p.cashOut.toFixed(2)}</span>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-end gap-1">
+                    <Pizza size={11} className="text-yellow-400/60" />
+                    <span className="text-base font-bold text-white/70">£{p.food.toFixed(2)}</span>
+                  </div>
+                  <div className="col-span-2 text-right">
+                    <span
+                      className={`text-base md:text-lg font-black ${
+                        p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
+                      }`}
+                    >
+                      {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
+                    </span>
+                  </div>
+                  </Link>
+                ))}
               </div>
-              <div className="col-span-4 md:col-span-3 flex items-center gap-2 md:gap-3 min-w-0">
-                <PlayerAvatar
-                  name={p.name}
-                  avatarUrl={avatarMap[p.name]}
-                  size={44}
-                  className="rounded-full border border-white/10 shrink-0"
-                />
-                <span className="font-bold text-sm md:text-base lg:text-lg truncate">{p.name}</span>
-              </div>
-              <div className="col-span-2 text-right">
-                <span className="text-base font-bold text-white/70">£{p.buyIn.toFixed(2)}</span>
-              </div>
-              <div className="hidden md:block col-span-2 text-right">
-                <span className="text-base font-bold text-white/70">£{p.cashOut.toFixed(2)}</span>
-              </div>
-              <div className="hidden md:flex col-span-2 items-center justify-end gap-1">
-                <Pizza size={11} className="text-yellow-400/60" />
-                <span className="text-base font-bold text-white/70">£{p.food.toFixed(2)}</span>
-              </div>
-              <div className="col-span-5 md:col-span-2 text-right">
-                <span
-                  className={`text-base md:text-lg font-black ${
-                    p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
-                  }`}
-                >
-                  {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
-                </span>
-              </div>
-              </Link>
-            ))}
+            </div>
           </div>
 
           {/* Totals strip — on mobile we stack the totals onto their own row
