@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Trophy, ChevronLeft, Crown, Medal, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import LifetimeProfitChart from "@/components/LifetimeProfitChart";
 import { supabase } from "@/lib/supabase";
 import {
   leaderboardCategories,
@@ -30,7 +31,12 @@ export default async function LeaderboardsPage({
   }
 
   const podium = category.rows.slice(0, 3);
-  const rest = category.rows.slice(3);
+  // Overall-leader replaces the podium with the chart, so the table below
+  // needs the full ranking (1-N), not just rank 4+. Other categories keep
+  // the podium → start the table at rank 4.
+  const rest = category.slug === "overall-leader"
+    ? category.rows
+    : category.rows.slice(3);
 
   // Render podium in visual order (2nd, 1st, 3rd) instead of using CSS `order`.
   // CSS order shuffles paint but leaves DOM at 1-2-3, which means tab order
@@ -94,10 +100,44 @@ export default async function LeaderboardsPage({
         </div>
       </nav>
 
+      {/* Overall-leader landing: lead with the dashboard's chip-stack chart
+          rather than a top-3 podium. The chart shows every player at once
+          and reads better than a podium that hides half the roster. Other
+          categories keep the podium because their metrics (win-rate ties,
+          food spend, etc.) don't translate to a single comparable axis. */}
+      {category.slug === "overall-leader" ? (
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-3 md:p-5 mb-4 shrink-0 flex flex-col">
+          <div className="flex items-end justify-between mb-3 gap-3 shrink-0">
+            <div>
+              <h2 className="text-base md:text-lg font-black tracking-widest uppercase">
+                Lifetime Profit
+              </h2>
+              <p className="text-sm text-white/40 mt-1">
+                Net per player across every recorded session.
+              </p>
+            </div>
+          </div>
+          {/* Same horizontal-scroll-on-mobile pattern as the dashboard, so
+              names don't collide on narrow viewports. The chart height is
+              ~320px on phones and grows to ~420px on tablet+. */}
+          <div className="relative h-[320px] md:h-[420px]">
+            <div className="h-full overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="h-full md:w-full min-w-[480px] md:min-w-0">
+                <LifetimeProfitChart />
+              </div>
+            </div>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-0 right-0 h-full w-8 md:hidden bg-gradient-to-l from-[#0E1117] to-transparent"
+            />
+          </div>
+        </div>
+      ) : null}
+
       {/* Top 3 Podium — DOM is rendered in *visual* order (2-1-3) so tab order
           and screen-reader announcement match what's on screen. Extra top
           padding keeps the crown above #1 from overlapping the switcher. */}
-      {podiumVisual.length > 0 && (
+      {category.slug !== "overall-leader" && podiumVisual.length > 0 && (
         <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4 mt-6 md:mt-8 items-end shrink-0">
           {podiumVisual.map((row) => {
             const realRank = row.rank;
