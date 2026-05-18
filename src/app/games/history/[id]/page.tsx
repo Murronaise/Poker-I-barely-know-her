@@ -239,9 +239,13 @@ export default async function HistoricalGamePage({
       )}
 
       {/* Chip-stack / table photos — public read, upload gated to signed-in
-          users. Self-suppresses when there are no photos AND the viewer
-          can't upload (so anonymous visitors don't see an empty box). */}
-      <GamePhotos gameId={game.id} canUpload={Boolean(user)} />
+          users. Players list drives the per-player attach affordance so
+          each chip-stack shot gets tagged with whose stack it is. */}
+      <GamePhotos
+        gameId={game.id}
+        canUpload={Boolean(user)}
+        players={game.players.map((p) => ({ name: p.name, avatarUrl: avatarMap[p.name] }))}
+      />
 
 
       {/* Settlement table */}
@@ -378,7 +382,7 @@ export default async function HistoricalGamePage({
               </div>
               </div>
 
-              {providers.length > 0 && (
+              {providers.length > 0 && !meta && (
                 <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/5">
                   <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
                     Pay {s.to}:
@@ -451,7 +455,7 @@ export default async function HistoricalGamePage({
               </div>
               </div>
 
-              {providers.length > 0 && (
+              {providers.length > 0 && !meta && (
                 <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/5">
                   <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
                     Pay {p.to}:

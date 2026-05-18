@@ -163,6 +163,15 @@ function Banner({ hit }: { hit: Hit }) {
     iconColor = "text-[#39FF14]";
   }
 
+  // "Vote needed" can match several open polls in a row (the cron creates
+  // weekend drafts in advance). Deep-linking to one buries the others, so
+  // for that variant we route to the polls list instead. The other two
+  // variants (below-min, upcoming-yes) are specific to a single poll, so
+  // they keep their direct link.
+  const href = hit.variant === "vote-needed"
+    ? "/games/poll"
+    : `/games/poll/${hit.poll.id}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -172,7 +181,7 @@ function Banner({ hit }: { hit: Hit }) {
       className="mb-4"
     >
       <Link
-        href={`/games/poll/${hit.poll.id}`}
+        href={href}
         className={`flex items-center gap-3 md:gap-4 rounded-2xl border backdrop-blur-xl px-4 md:px-5 py-3 md:py-4 transition-colors hover:brightness-110 ${accent}`}
       >
         <div className={`shrink-0 ${iconColor}`}>{icon}</div>

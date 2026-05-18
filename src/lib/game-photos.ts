@@ -21,6 +21,10 @@ export type GamePhoto = {
   gameId: string;
   url: string;
   caption: string | null;
+  /** Original-case player name when the photo is tagged to a specific
+   *  player (chip-stack shot). Null for general game photos (food,
+   *  table, etc.). */
+  playerName: string | null;
   uploadedAt: string;
   uploadedBy: string | null;
 };
@@ -32,7 +36,7 @@ export async function fetchPhotosForGame(
   try {
     const { data, error } = await client
       .from("game_photos")
-      .select("id, game_id, storage_path, caption, uploaded_at, uploaded_by")
+      .select("id, game_id, storage_path, caption, player_name, uploaded_at, uploaded_by")
       .eq("game_id", gameId)
       .order("uploaded_at", { ascending: false });
     if (error || !data) return [];
@@ -41,6 +45,7 @@ export async function fetchPhotosForGame(
       game_id: string;
       storage_path: string;
       caption: string | null;
+      player_name: string | null;
       uploaded_at: string;
       uploaded_by: string | null;
     }) => ({
@@ -48,6 +53,7 @@ export async function fetchPhotosForGame(
       gameId: r.game_id,
       url: client.storage.from(PHOTO_BUCKET).getPublicUrl(r.storage_path).data.publicUrl,
       caption: r.caption,
+      playerName: r.player_name,
       uploadedAt: r.uploaded_at,
       uploadedBy: r.uploaded_by,
     }));
@@ -61,11 +67,14 @@ export async function fetchPhotosForGame(
  * so the caller can surface the right toast — partial state (upload
  * succeeded but index insert failed) leaves the object orphaned in
  * storage; that's worth a follow-up cron later.
+ *
+ * Pass `playerName` to tag the shot to a specific player (chip-stack
+ * attribution); omit for general / scene photos.
  */
 export async function uploadGamePhoto(
   gameId: string,
   file: File,
-  caption?: string,
+  options: { caption?: string; playerName?: string } = {},
 ): Promise<GamePhoto> {
   if (file.size > PHOTO_MAX_BYTES) {
     throw new Error(`Photos must be under ${Math.round(PHOTO_MAX_BYTES / (1024 * 1024))} MB.`);
@@ -89,10 +98,11 @@ export async function uploadGamePhoto(
     .insert({
       game_id: gameId,
       storage_path: path,
-      caption: caption?.trim() || null,
+      caption: options.caption?.trim() || null,
+      player_name: options.playerName?.trim() || null,
       uploaded_by: user?.id ?? null,
     })
-    .select("id, game_id, storage_path, caption, uploaded_at, uploaded_by")
+    .select("id, game_id, storage_path, caption, player_name, uploaded_at, uploaded_by")
     .single();
   if (insertErr || !inserted) {
     // Best-effort: try to clean up the orphan object.
@@ -105,6 +115,7 @@ export async function uploadGamePhoto(
     gameId: inserted.game_id,
     url: sb.storage.from(PHOTO_BUCKET).getPublicUrl(inserted.storage_path).data.publicUrl,
     caption: inserted.caption,
+    playerName: inserted.player_name,
     uploadedAt: inserted.uploaded_at,
     uploadedBy: inserted.uploaded_by,
   };

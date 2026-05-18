@@ -27,6 +27,48 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.0",
+    date: "May 18, 2026",
+    summary: "Pay-now buttons, achievements, yearly recap, and a heap of admin tooling",
+    items: [
+      // Settlement / money
+      { category: "Settlement", type: "feature", text: "One-tap pay buttons on every settlement row — Revolut, Monzo, and PayPal links with the exact amount pre-filled. Set your handles in Account → Payment handles." },
+      { category: "Settlement", type: "feature", text: "Running balance ledger on every profile shows how much you still owe Toby (or vice versa) across every game, with a per-session breakdown." },
+      { category: "Settlement", type: "improvement", text: "Settled rows now show 'Paid 2h ago · by Toby' so it's obvious who marked the tick and when. Pay buttons disappear once a row is settled so you don't accidentally double-pay." },
+      { category: "Settlement", type: "feature", text: "Admin dashboard banner sums all outstanding balances across the table — 'they owe you £X / you owe £Y' with one tap to /players.", adminOnly: true },
+      // Profiles / engagement
+      { category: "Profile", type: "feature", text: "Achievements grid: 11 stackable badges including Hat Trick, Five-Timer, Big Spender, Comeback Kid, and Centurion. Locked badges show a progress bar so you can see how close you are." },
+      { category: "Profile", type: "feature", text: "Personal Bests section: biggest win + loss with the night they happened, longest win and losing streaks, debut date." },
+      // Game-night UX
+      { category: "Live Game", type: "feature", text: "Photos can now be attached to a specific player — tap their avatar in the Photos panel to upload a chip-stack shot tagged to them. General shots for food and table scenes still work the same way." },
+      { category: "Live Game", type: "feature", text: "Sound pack — distinct synth cues for bust (sad descending two-tone), rebuy (ka-ching), level-up (cascade), and game finalize (arpeggio). Same mute toggle as before." },
+      { category: "Live Game", type: "fix", text: "Live game state now survives a hard refresh — buy-ins, busts, rebuys, the event log, and the timer all restore from sessionStorage. Marathon games past midnight no longer get wiped." },
+      // Scheduling
+      { category: "Scheduling", type: "feature", text: "iCal feed at /api/calendar.ics — subscribe from any calendar app to get confirmed game nights + historical sessions automatically." },
+      { category: "Scheduling", type: "feature", text: "Daily housekeeping cron auto-cancels under-quorum polls inside the 24h window and auto-creates polls for the next first/last weekend of each month so you never have to remember." },
+      { category: "Scheduling", type: "feature", text: "Weekly settlement-reminder cron posts a Discord/Slack summary of debts older than a week.", adminOnly: true },
+      // Admin
+      { category: "Admin", type: "feature", text: "Private per-game notes panel on every history page — context, disputes, anything worth remembering. Admin-only.", adminOnly: true },
+      { category: "Admin", type: "feature", text: "/admin/restore page — soft-deleted games show up here for one-click restore instead of being gone forever.", adminOnly: true },
+      { category: "Admin", type: "feature", text: "/admin/merge page — collapse duplicate name variants (toby/Toby/tobby) into one canonical entry. Detects case-different duplicates and suggests them.", adminOnly: true },
+      { category: "Admin", type: "feature", text: "Audit log captures every admin mutation (delete, restore, edit, mark-paid, alias add).", adminOnly: true },
+      // Engagement / recap
+      { category: "Recap", type: "feature", text: "Yearly recap page at /recap/<year> — totals, Money Printer / The Pit / Furniture / Foodie cards, single-night peaks, year-end leaderboard. Auto-surfaces on the dashboard during December and for the prior year Jan–Nov." },
+      // Mobile / PWA
+      { category: "Mobile", type: "feature", text: "Installable as a PWA — Add to Home Screen on iOS / Android. Service worker pre-caches the offline shell so a flaky connection at the table doesn't dump you onto the dino page." },
+      // Smaller fixes from the site review
+      { category: "Polish", type: "fix", text: "New signups now show up immediately on the players roster and the dashboard player count, not just after they've played a session." },
+      { category: "Polish", type: "fix", text: "Finalized-game results table on portrait phones now scrolls horizontally instead of cramming all five columns into one width." },
+      { category: "Polish", type: "fix", text: "Dashboard 'Probably Cheating', 'Mortgage Material', etc. now derive their leader names from real data — they were previously hard-coded and could lie after a new session." },
+      { category: "Polish", type: "improvement", text: "Settlement model rephrased internally — admin and food payer are now separable concepts even though they're the same person today, paving the way for a future where someone else hosts." },
+      { category: "Polish", type: "fix", text: "Player names with double-spaces or trailing hyphens are now rejected at signup — was rendering oddly across the site." },
+      { category: "Polish", type: "fix", text: "Long player names wrap to two lines instead of being truncated mid-word on the roster." },
+      { category: "Polish", type: "improvement", text: "Avatar upload now validates MIME type + size client-side so users get an instant error instead of a silent storage rejection." },
+      { category: "Polish", type: "fix", text: "Dashboard 'Open Poll' banner now routes to the polls list when multiple polls are open, rather than burying the others behind a single deep link." },
+      { category: "Polish", type: "fix", text: "Poll detail page now shows voter chips for Maybe and No, not just Yes." },
+    ],
+  },
+  {
     version: "1.6.6",
     date: "May 8, 2026",
     summary: "Single end-of-night transfer per player — no more upfront buy-in transfers",

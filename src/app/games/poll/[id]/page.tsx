@@ -485,14 +485,42 @@ export default function PollDetailPage({
                   </div>
                 )}
 
-                {/* Voter chips */}
-                {tally && tally.voters.yes.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {tally.voters.yes.map((uid) => (
-                      <span key={uid} className="text-xs font-semibold text-[#39FF14] bg-[#39FF14]/10 border border-[#39FF14]/20 rounded-full px-2 py-0.5">
-                        {users[uid]?.player_name ?? "Player"}
-                      </span>
-                    ))}
+                {/* Voter chips — one section per response so it's obvious
+                    who's in, who's leaning, and who's out. Previously only
+                    the "yes" voters rendered, which made the maybe/no
+                    counts feel anonymous. */}
+                {tally && (tally.voters.yes.length > 0 || tally.voters.maybe.length > 0 || tally.voters.no.length > 0) && (
+                  <div className="flex flex-col gap-1.5 mb-3">
+                    {tally.voters.yes.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-black tracking-widest uppercase text-[#39FF14]/70 mr-0.5 w-[40px] shrink-0">Yes</span>
+                        {tally.voters.yes.map((uid) => (
+                          <span key={uid} className="text-xs font-semibold text-[#39FF14] bg-[#39FF14]/10 border border-[#39FF14]/20 rounded-full px-2 py-0.5">
+                            {users[uid]?.player_name ?? "Player"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {tally.voters.maybe.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-black tracking-widest uppercase text-yellow-400/70 mr-0.5 w-[40px] shrink-0">Maybe</span>
+                        {tally.voters.maybe.map((uid) => (
+                          <span key={uid} className="text-xs font-semibold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-full px-2 py-0.5">
+                            {users[uid]?.player_name ?? "Player"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {tally.voters.no.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-black tracking-widest uppercase text-red-400/70 mr-0.5 w-[40px] shrink-0">No</span>
+                        {tally.voters.no.map((uid) => (
+                          <span key={uid} className="text-xs font-semibold text-red-400 bg-red-400/10 border border-red-400/20 rounded-full px-2 py-0.5">
+                            {users[uid]?.player_name ?? "Player"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

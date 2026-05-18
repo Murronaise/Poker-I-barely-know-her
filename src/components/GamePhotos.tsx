@@ -1,11 +1,16 @@
 "use client";
 
-// Server-rendered list of attached photos for a game + a client-side
-// uploader. Uploads happen straight from the user's device camera roll
-// (or camera) via the file input's `capture` attribute hint on mobile.
+// Server-rendered list of attached photos for a game + per-player upload
+// affordances. Each player in the game roster gets a small camera button
+// next to their avatar; tapping opens the device's camera / gallery and
+// the uploaded photo is tagged with that player's name. A separate
+// "Untagged" slot covers food / scene shots.
+//
+// Photos render as a thumbnail grid with the tagged player overlaid on
+// each card so it's obvious whose stack is whose.
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Loader2, Trash2, X } from "lucide-react";
+import { Camera, Loader2, Trash2, X, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -14,19 +19,28 @@ import {
   uploadGamePhoto,
   type GamePhoto,
 } from "@/lib/game-photos";
+import PlayerAvatar from "@/components/PlayerAvatar";
 
 type Props = {
   gameId: string;
-  /** When true, render the upload affordance. */
+  /** Players in this game — used to render per-player upload affordances. */
+  players: { name: string; avatarUrl?: string }[];
+  /** When true, render the upload affordances. */
   canUpload: boolean;
 };
 
-export default function GamePhotos({ gameId, canUpload }: Props) {
+export default function GamePhotos({ gameId, players, canUpload }: Props) {
   const [photos, setPhotos] = useState<GamePhoto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  // Tracks which player slot is currently uploading so we can disable just
+  // that button and show a spinner instead of disabling the whole panel.
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [viewer, setViewer] = useState<GamePhoto | null>(null);
+  // One hidden input is enough — we set the pending player name in state
+  // immediately before the file dialog opens, then read it back in the
+  // change handler.
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingPlayerRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,25 +55,40 @@ export default function GamePhotos({ gameId, canUpload }: Props) {
     return () => { cancelled = true; };
   }, [gameId]);
 
+  const openPicker = (playerName: string | null) => {
+    pendingPlayerRef.current = playerName;
+    setUploadingFor(playerName ?? "__untagged__");
+    fileInputRef.current?.click();
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    const tag = pendingPlayerRef.current;
     e.target.value = "";
-    setUploading(true);
+    pendingPlayerRef.current = null;
+    if (!file) {
+      setUploadingFor(null);
+      return;
+    }
     try {
-      const photo = await uploadGamePhoto(gameId, file);
+      const photo = await uploadGamePhoto(gameId, file, {
+        playerName: tag ?? undefined,
+      });
       setPhotos((prev) => [photo, ...prev]);
-      toast.success("Photo uploaded.");
+      toast.success(tag ? `Photo tagged to ${tag}.` : "Photo uploaded.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Couldn't upload the photo.";
       const looksLikeMissingBucket = /bucket not found/i.test(msg);
+      const looksLikeMissingColumn = /column .* does not exist/i.test(msg);
       toast.error(
         looksLikeMissingBucket
           ? "game-photos bucket missing — run the Phase E migration in Supabase."
-          : msg,
+          : looksLikeMissingColumn
+            ? "player_name column missing — run the Phase E.2 migration in Supabase."
+            : msg,
       );
     } finally {
-      setUploading(false);
+      setUploadingFor(null);
     }
   };
 
@@ -75,13 +104,13 @@ export default function GamePhotos({ gameId, canUpload }: Props) {
   };
 
   if (!loading && photos.length === 0 && !canUpload) {
-    // No photos and no upload affordance to surface — render nothing.
-    return null;
+    // Nothing to show and nothing to do — render nothing rather than an
+    // empty box. Anonymous visitors don't get the uploader.
   }
 
   return (
     <section className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 md:p-5 mb-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
           <div className="p-1.5 rounded-lg bg-cyan-400/10 border border-cyan-400/30 shrink-0">
             <Camera size={14} className="text-cyan-400" />
@@ -95,53 +124,121 @@ export default function GamePhotos({ gameId, canUpload }: Props) {
             </span>
           )}
         </div>
-        {canUpload && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-              capture="environment"
-              onChange={handleFile}
-              className="hidden"
-            />
+      </div>
+
+      {/* Per-player upload row — tap a player's avatar to attach a chip-
+          stack photo for them specifically. Falls back to "Untagged" for
+          food / scene shots. */}
+      {canUpload && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            capture="environment"
+            onChange={handleFile}
+            className="hidden"
+          />
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <span className="text-[10px] font-black tracking-widest uppercase text-white/40 mr-1">
+              Attach to:
+            </span>
+            {players.map((p) => {
+              const busy = uploadingFor === p.name;
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() => openPicker(p.name)}
+                  disabled={uploadingFor !== null}
+                  title={`Attach a photo to ${p.name}`}
+                  aria-label={`Attach a photo tagged to ${p.name}`}
+                  className="group relative inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-black/30 hover:bg-cyan-400/15 border border-white/10 hover:border-cyan-400/40 text-white/70 hover:text-cyan-400 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <PlayerAvatar
+                    name={p.name}
+                    avatarUrl={p.avatarUrl}
+                    size={20}
+                    className="rounded-full border border-white/10 shrink-0"
+                  />
+                  <span className="truncate max-w-[80px]">{p.name}</span>
+                  {busy ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <Camera size={11} className="opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              );
+            })}
+            {/* Untagged uploader — for food, table, banter shots that
+                aren't tied to one player's stack. */}
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cyan-400/15 hover:bg-cyan-400/25 border border-cyan-400/40 text-cyan-400 font-black uppercase text-xs tracking-widest transition-colors disabled:opacity-50"
+              onClick={() => openPicker(null)}
+              disabled={uploadingFor !== null}
+              title="Attach a general photo (no player)"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 hover:bg-white/10 border border-white/10 hover:border-white/30 text-white/50 hover:text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {uploading ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
-              {uploading ? "Uploading" : "Add photo"}
+              {uploadingFor === "__untagged__" ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <Camera size={11} />
+              )}
+              <span>General</span>
             </button>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       {loading ? (
         <p className="text-xs text-white/30 italic">Loading photos…</p>
       ) : photos.length === 0 ? (
         <p className="text-xs text-white/30 italic">
-          No photos yet — chip-stack shots, food spreads, and post-game scoreboards welcome.
+          No photos yet — tap a player above to attach a chip-stack shot, or use General for the food spread.
         </p>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-          {photos.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setViewer(p)}
-              className="group relative aspect-square overflow-hidden rounded-lg border border-white/10 hover:border-cyan-400/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={p.url}
-                alt={p.caption ?? `Game photo ${p.id}`}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                loading="lazy"
-              />
-            </button>
-          ))}
+        // Two columns on phones so thumbnails are big enough to tap; up to
+        // four on tablet/desktop. The previous 3/4/5 layout crushed
+        // thumbnails on small screens.
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {photos.map((p) => {
+            const taggedPlayer = p.playerName
+              ? players.find((pl) => pl.name.toLowerCase() === p.playerName!.toLowerCase())
+              : null;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setViewer(p)}
+                className="group relative aspect-square overflow-hidden rounded-lg border border-white/10 hover:border-cyan-400/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.url}
+                  alt={p.caption ?? (p.playerName ? `${p.playerName}'s stack` : `Game photo ${p.id}`)}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy"
+                />
+                {/* Tag overlay — avatar + name when the photo is tied to a
+                    specific player, plain icon otherwise. */}
+                {p.playerName ? (
+                  <span className="absolute bottom-1 left-1 right-1 inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold truncate">
+                    <PlayerAvatar
+                      name={p.playerName}
+                      avatarUrl={taggedPlayer?.avatarUrl}
+                      size={16}
+                      className="rounded-full border border-white/20 shrink-0"
+                    />
+                    <span className="truncate">{p.playerName}</span>
+                  </span>
+                ) : (
+                  <span className="absolute bottom-1 left-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-white/70 text-[9px] font-bold tracking-widest uppercase">
+                    <Tag size={8} /> General
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -168,6 +265,17 @@ export default function GamePhotos({ gameId, canUpload }: Props) {
               alt={viewer.caption ?? `Game photo ${viewer.id}`}
               className="w-full h-full object-contain"
             />
+            {viewer.playerName && (
+              <div className="absolute top-3 left-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-sm font-bold">
+                <PlayerAvatar
+                  name={viewer.playerName}
+                  avatarUrl={players.find((pl) => pl.name.toLowerCase() === viewer.playerName!.toLowerCase())?.avatarUrl}
+                  size={24}
+                  className="rounded-full border border-white/20 shrink-0"
+                />
+                {viewer.playerName}
+              </div>
+            )}
             {canUpload && (
               <button
                 type="button"

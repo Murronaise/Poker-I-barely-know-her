@@ -41,14 +41,21 @@ function icsEscape(s: string): string {
     .replace(/\r?\n/g, "\\n");
 }
 
-/** Convert YYYY-MM-DD + HH:MM[:SS] (assumed local) → ICS DTSTART in UTC. */
-function toIcsDateTimeUtc(date: string, time: string): string {
+/**
+ * Emit "floating" local-time DTSTART (no `Z` suffix, no TZID). Every
+ * RFC-5545 client interprets this as wall-clock time in the user's
+ * local timezone — which is exactly what the user typed when they
+ * set up the poll. The previous UTC conversion relied on the cron
+ * server's timezone, which on Vercel is UTC, so a "19:30" entry
+ * ended up appearing 1h late in the UK during BST.
+ */
+function toIcsLocalDateTime(date: string, time: string): string {
   const [hh, mm, ss = "0"] = time.split(":");
-  // Build as a *local* time then convert to UTC — Europe/London handles
-  // BST/GMT itself.
-  const local = new Date(`${date}T${hh.padStart(2, "0")}:${mm.padStart(2, "0")}:${ss.padStart(2, "0")}`);
-  const utc = new Date(local.getTime() - local.getTimezoneOffset() * 60_000);
-  return `${utc.getUTCFullYear()}${pad(utc.getUTCMonth() + 1)}${pad(utc.getUTCDate())}T${pad(utc.getUTCHours())}${pad(utc.getUTCMinutes())}${pad(utc.getUTCSeconds())}Z`;
+  const safeHh = hh.padStart(2, "0");
+  const safeMm = mm.padStart(2, "0");
+  const safeSs = ss.padStart(2, "0");
+  // YYYYMMDDTHHMMSS — no Z, no TZID. Floating local time.
+  return `${date.replaceAll("-", "")}T${safeHh}${safeMm}${safeSs}`;
 }
 
 function pad(n: number): string {
@@ -115,11 +122,21 @@ export async function GET(): Promise<NextResponse> {
     if (!poll.confirmed_option_id) continue;
     const opt = optionsById.get(poll.confirmed_option_id);
     if (!opt) continue;
-    const dtstart = toIcsDateTimeUtc(opt.game_date, opt.start_time);
+    // Floating local DTSTART — see toIcsLocalDateTime comment for why.
+    const dtstart = toIcsLocalDateTime(opt.game_date, opt.start_time);
     // Default 4-hour block — actual duration emerges once the game is logged.
-    const startTs = new Date(`${opt.game_date}T${opt.start_time}`);
-    const endTs = new Date(startTs.getTime() + 4 * 60 * 60 * 1000);
-    const dtend = `${endTs.getUTCFullYear()}${pad(endTs.getUTCMonth() + 1)}${pad(endTs.getUTCDate())}T${pad(endTs.getUTCHours())}${pad(endTs.getUTCMinutes())}${pad(endTs.getUTCSeconds())}Z`;
+    // Add 4h to the same floating time without going through Date.UTC, so
+    // a BST start of 19:30 stays a BST end of 23:30 in the user's calendar.
+    const [hh, mm] = opt.start_time.split(":").map((n) => parseInt(n, 10));
+    const endHour = (hh + 4) % 24;
+    const dayCarry = Math.floor((hh + 4) / 24);
+    const endDateParts = opt.game_date.split("-").map((n) => parseInt(n, 10));
+    // Walk the date forward by `dayCarry` days when the end time crosses midnight.
+    const endJsDate = new Date(Date.UTC(endDateParts[0], endDateParts[1] - 1, endDateParts[2] + dayCarry));
+    const dtend = toIcsLocalDateTime(
+      `${endJsDate.getUTCFullYear()}-${pad(endJsDate.getUTCMonth() + 1)}-${pad(endJsDate.getUTCDate())}`,
+      `${pad(endHour)}:${pad(mm)}:00`,
+    );
 
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:poker-poll-${poll.id}@poker-tracker`);

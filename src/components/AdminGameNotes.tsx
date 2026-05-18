@@ -10,7 +10,7 @@
 // for a "Save" button while scribbling context.
 
 import { useEffect, useState } from "react";
-import { NotebookPen, Save, Lock, Loader2, Check, X } from "lucide-react";
+import { NotebookPen, Save, Lock, Loader2, Check, X, Edit2, Plus, ChevronUp } from "lucide-react";
 import { saveGameNote, type GameNote } from "@/lib/game-notes-db";
 
 type Props = {
@@ -74,13 +74,28 @@ export default function AdminGameNotes({ gameId, initialNote }: Props) {
             Private
           </span>
         </div>
+        {/* Style matches the Edit / Delete buttons in HistoryActions so the
+            admin controls feel like one set rather than three different
+            looks. */}
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="text-[10px] font-black tracking-widest uppercase text-white/50 hover:text-cyan-400 transition-colors"
           aria-expanded={open}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-400/10 border border-white/10 hover:border-cyan-400/40 text-white/50 hover:text-cyan-400 font-bold text-xs uppercase tracking-widest transition-colors"
         >
-          {open ? "Collapse" : note.trim() ? "Edit" : "Add notes"}
+          {open ? (
+            <>
+              <ChevronUp size={11} /> Collapse
+            </>
+          ) : note.trim() ? (
+            <>
+              <Edit2 size={11} /> Edit
+            </>
+          ) : (
+            <>
+              <Plus size={11} /> Add notes
+            </>
+          )}
         </button>
       </div>
 
