@@ -27,6 +27,17 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.1",
+    date: "May 24, 2026",
+    summary: "Polls decide themselves a week ahead — and stay open for late RSVPs",
+    items: [
+      { category: "Scheduling", type: "improvement", text: "Polls now get a verdict 1 week before game day instead of waiting until 24 hours out: whichever date has the most yes votes is locked in automatically, provided at least 4 people have said yes to it." },
+      { category: "Scheduling", type: "improvement", text: "Polls that don't hit the 4-yes threshold by 1 week out get cancelled at the same time — no more silent under-quorum drift right up to the day before." },
+      { category: "Scheduling", type: "feature", text: "Once a date is confirmed, you can still RSVP yes/maybe/no on it — handy for last-minute joiners. The other dates lock so the verdict can't flip." },
+      { category: "Scheduling", type: "fix", text: "Auto-created scaffold polls with no dates populated are no longer cancelled by the housekeeping cron — they just stay open until an admin fills them in.", adminOnly: true },
+    ],
+  },
+  {
     version: "1.7.0",
     date: "May 18, 2026",
     summary: "Pay-now buttons, achievements, yearly recap, and a heap of admin tooling",

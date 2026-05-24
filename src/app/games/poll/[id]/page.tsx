@@ -319,7 +319,7 @@ export default function PollDetailPage({
               </h1>
               <p className="text-white/50 text-base mt-2">
                 {poll.status === "open" && "Vote on the days that work for you"}
-                {poll.status === "confirmed" && confirmedOption && `Confirmed: ${formatDateLong(confirmedOption.game_date)}`}
+                {poll.status === "confirmed" && confirmedOption && `Confirmed: ${formatDateLong(confirmedOption.game_date)} · RSVP still open`}
                 {poll.status === "cancelled" && "This poll was cancelled"}
                 {poll.status === "superseded" && "This poll was replaced by a re-poll"}
               </p>
@@ -524,8 +524,11 @@ export default function PollDetailPage({
                   </div>
                 )}
 
-                {/* Vote buttons */}
-                {me && poll.status === "open" && (
+                {/* Vote buttons. Open polls allow voting on every option;
+                    confirmed polls keep voting open only on the locked-in
+                    date so late joiners can add themselves without changing
+                    which day was picked. */}
+                {me && (poll.status === "open" || (poll.status === "confirmed" && isConfirmed)) && (
                   <div className="grid grid-cols-3 gap-2">
                     <VoteButton
                       label="Yes"

@@ -1,8 +1,14 @@
 // Daily poll-housekeeping cron.
 //
 // What it does:
-//   1. Auto-cancels open polls whose weekend is < 24h away and which
-//      haven't hit min_players in yes votes.
+//   1. At T-7 days from game day, decides each open poll in a single pass:
+//      - Pick the option with the most yes votes (ties: most maybes, then
+//        earliest date — see suggestWinner).
+//      - If that option has >= min_players yes votes, mark the poll
+//        `confirmed` and lock the winning option in.
+//      - Otherwise mark the poll `cancelled`.
+//      The window is "weekend_start_date <= today+7" so polls added late
+//      (e.g. 4 days out) still get a verdict on the next cron run.
 //   2. (Optional) Auto-creates a poll for the next first-or-last weekend
 //      of the month when one doesn't already exist — gives the
 //      "recurring weekly slot" feature with no per-week clicks.
@@ -17,7 +23,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
-import { DEFAULT_MIN_PLAYERS, upcomingFirstAndLastWeekends } from "@/lib/polls";
+import {
+  DEFAULT_MIN_PLAYERS,
+  suggestWinner,
+  upcomingFirstAndLastWeekends,
+  type PollWithDetails,
+} from "@/lib/polls";
 
 export const dynamic = "force-dynamic";
 
@@ -48,42 +59,67 @@ async function runHousekeeping() {
 
   const summary = {
     cancelled: [] as string[],
+    confirmed: [] as string[],
     created: [] as string[],
     errors: [] as string[],
   };
 
-  // 1. Auto-cancel under-quorum polls.
+  // 1. T-7 verdict pass: confirm if the winning option has min_players yes
+  //    votes, otherwise cancel. Catches anything inside the 7-day window so
+  //    polls created late still get a verdict on the next cron run.
   const now = new Date();
-  const cutoff = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const cutoffIso = cutoff.toISOString().split("T")[0];
+  const verdictCutoffIso = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
 
-  const { data: openPolls, error: openErr } = await sb
+  const { data: candidates, error: candidatesErr } = await sb
     .from("polls")
-    .select("id, min_players, weekend_start_date")
+    .select(
+      "id, created_by, created_at, updated_at, weekend_start_date, status, confirmed_option_id, min_players, parent_poll_id, notes, options:poll_options(*), rsvps(*)",
+    )
     .eq("status", "open")
-    .lte("weekend_start_date", cutoffIso);
-  if (openErr) {
-    summary.errors.push(`open polls fetch: ${openErr.message}`);
+    .lte("weekend_start_date", verdictCutoffIso);
+  if (candidatesErr) {
+    summary.errors.push(`verdict candidates fetch: ${candidatesErr.message}`);
   }
 
-  for (const poll of openPolls ?? []) {
-    const { count } = await sb
-      .from("rsvps")
-      .select("id", { count: "exact", head: true })
-      .eq("poll_id", poll.id)
-      .eq("response", "yes");
-    const yesCount = count ?? 0;
+  for (const poll of (candidates ?? []) as unknown as PollWithDetails[]) {
+    // Empty scaffold polls (auto-created but never populated with dates) get
+    // skipped — they're not "rejected by quorum", they're just unfinished.
+    if (poll.options.length === 0) continue;
     const threshold = poll.min_players ?? DEFAULT_MIN_PLAYERS;
-    if (yesCount >= threshold) continue;
-    const { error: updateErr } = await sb
-      .from("polls")
-      .update({ status: "cancelled", updated_at: new Date().toISOString() })
-      .eq("id", poll.id);
-    if (updateErr) {
-      summary.errors.push(`cancel ${poll.id}: ${updateErr.message}`);
-      continue;
+    const winner = suggestWinner(poll);
+    const yesForWinner = winner
+      ? poll.rsvps.filter(
+          (r) => r.poll_option_id === winner.id && r.response === "yes",
+        ).length
+      : 0;
+
+    if (winner && yesForWinner >= threshold) {
+      const { error: confirmErr } = await sb
+        .from("polls")
+        .update({
+          status: "confirmed",
+          confirmed_option_id: winner.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", poll.id);
+      if (confirmErr) {
+        summary.errors.push(`confirm ${poll.id}: ${confirmErr.message}`);
+        continue;
+      }
+      summary.confirmed.push(poll.id);
+    } else {
+      const { error: cancelErr } = await sb
+        .from("polls")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", poll.id);
+      if (cancelErr) {
+        summary.errors.push(`cancel ${poll.id}: ${cancelErr.message}`);
+        continue;
+      }
+      summary.cancelled.push(poll.id);
     }
-    summary.cancelled.push(poll.id);
   }
 
   // 2. Auto-create the next two first/last weekend polls if absent.
