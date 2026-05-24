@@ -132,7 +132,7 @@ export type LiveGameSnapshot = {
   }[];
   events: {
     id: number;
-    type: "rebuy" | "bust" | "level" | "undo" | "start";
+    type: "rebuy" | "bust" | "level" | "undo" | "start" | "buyin";
     player?: string;
     amount?: number;
     label: string;

@@ -35,6 +35,11 @@ import {
   playBustSound,
   playRebuySound,
   playFinalizeSound,
+  playStartSound,
+  playCashOutSound,
+  playMismatchSound,
+  playUndoSound,
+  preloadGameSounds,
 } from "@/lib/sound-pack";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -50,7 +55,7 @@ type PlayerState = {
 
 type GameEvent = {
   id: number;
-  type: "rebuy" | "bust" | "level" | "undo" | "start";
+  type: "rebuy" | "bust" | "level" | "undo" | "start" | "buyin";
   player?: string;
   amount?: number;
   label: string;
@@ -149,6 +154,25 @@ function ActiveGameContent() {
   // with the mute toggle so the call sites stay terse.
   const muted = () => isMutedRef.current;
   const playMoneySound = () => playLevelUpSound({ muted: muted() });
+
+  // Once-per-session guard so React Strict Mode's effect double-run in
+  // dev (and any Fast Refresh remount in dev) can't fire the start cue
+  // twice — once we've played it, we never play it again for this
+  // component instance.
+  const startSoundPlayedRef = useRef(false);
+
+  // Warm the audio cache so the first rebuy/bust of the night plays
+  // without the "tap → silence → sound" lag of a cold fetch. On a fresh
+  // session (no restored snapshot) we also fire the card-shuffle start
+  // cue once. A short delay lets the audio context settle so the very
+  // first play() call doesn't get rejected by autoplay policy.
+  useEffect(() => {
+    preloadGameSounds();
+    if (restored || startSoundPlayedRef.current) return;
+    startSoundPlayedRef.current = true;
+    const t = setTimeout(() => playStartSound({ muted: muted() }), 250);
+    return () => clearTimeout(t);
+  }, [restored]);
 
   // Fetch Avatars
   useEffect(() => {
@@ -381,6 +405,11 @@ function ActiveGameContent() {
 
   const undoBust = (name: string) => {
     setPlayers((prev) => prev.map((p) => (p.name === name ? { ...p, cashOut: null } : p)));
+    playUndoSound({ muted: muted() });
+    // Keep the cashout tracker in sync — undoing a bust resets the
+    // input to empty, so the next legitimate cashout should fire a
+    // fresh sound and not be suppressed as "already logged".
+    setLastLoggedCashOuts((s) => ({ ...s, [name]: null }));
     addEvent({ type: "undo", player: name, label: `${name} bust undone` });
   };
 
@@ -392,6 +421,97 @@ function ActiveGameContent() {
     );
     playRebuySound({ muted: muted() });
     addEvent({ type: "rebuy", player: name, amount, label: `${name} rebuyed +£${amount}` });
+    // Preset rebuys already log themselves, so the onBlur on the buy-in
+    // input must not double-log the same delta. Sync the tracker now.
+    setLastLoggedBuyIns((s) => ({
+      ...s,
+      [name]: Number(((s[name] ?? 0) + amount).toFixed(2)),
+    }));
+  };
+
+  // Baselines for the per-player onBlur trackers. Computed once at mount
+  // from the restored snapshot or the URL/defaults so the refs start out
+  // matching the initial state — no spurious event-log entry or cue when
+  // the user blurs a field they haven't actually changed.
+  const initialBaseline = useMemo(() => {
+    const baselinePlayers =
+      restored?.players ??
+      (playersQuery.length > 0
+        ? playersQuery.map((n) => ({ name: n, buyIn: buyInQuery, cashOut: null as number | null }))
+        : [
+            { name: "Player A", buyIn: buyInQuery, cashOut: null as number | null },
+            { name: "Player B", buyIn: buyInQuery, cashOut: null as number | null },
+          ]);
+    const buyIns: Record<string, number> = {};
+    const cashOuts: Record<string, number | null> = {};
+    baselinePlayers.forEach((p) => {
+      buyIns[p.name] = p.buyIn;
+      cashOuts[p.name] = p.cashOut;
+    });
+    return { buyIns, cashOuts };
+    // Intentionally mount-only — `restored`, `playersQuery`, and
+    // `buyInQuery` are themselves stable for the life of the component
+    // (they come from useSearchParams / sessionStorage at first render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Tracks the buy-in value we've already logged an event for, per player.
+  // Rebuys keep this in sync directly (they log themselves); the buy-in
+  // input's onBlur compares against it to log direct edits exactly once.
+  // Modelled as state rather than a ref so the React Compiler is happy
+  // to let event handlers read it during render — refs-during-render
+  // gets flagged, plain state doesn't.
+  const [lastLoggedBuyIns, setLastLoggedBuyIns] = useState<Record<string, number>>(
+    () => initialBaseline.buyIns,
+  );
+  // Same idea for cash-outs — suppresses the cashout cue from re-firing
+  // on every keystroke and every minor adjustment. First transition
+  // from "empty" to a positive number triggers the sound; subsequent
+  // edits stay silent.
+  const [lastLoggedCashOuts, setLastLoggedCashOuts] = useState<Record<string, number | null>>(
+    () => initialBaseline.cashOuts,
+  );
+
+  const commitCashOutChange = (name: string) => {
+    const player = players.find((p) => p.name === name);
+    if (!player) return;
+    const prev = lastLoggedCashOuts[name];
+    const next = player.cashOut;
+    if (prev === next) return;
+    if (prev === null && next !== null && next > 0) {
+      // First time this player has typed a positive cash-out — they're
+      // walking away in profit (or at least with chips). Bust button
+      // handles the £0 / negative case with its own cue.
+      playCashOutSound({ muted: muted() });
+    }
+    setLastLoggedCashOuts((s) => ({ ...s, [name]: next }));
+  };
+
+  const commitBuyInChange = (name: string) => {
+    const player = players.find((p) => p.name === name);
+    if (!player) return;
+    const prev = lastLoggedBuyIns[name] ?? 0;
+    const next = player.buyIn;
+    if (Math.abs(next - prev) < 0.005) return;
+    const delta = Number((next - prev).toFixed(2));
+    playRebuySound({ muted: muted() });
+    if (prev === 0 && next > 0) {
+      addEvent({
+        type: "buyin",
+        player: name,
+        amount: next,
+        label: `${name} bought in for £${next.toFixed(2)}`,
+      });
+    } else {
+      const sign = delta > 0 ? "+" : "−";
+      addEvent({
+        type: "buyin",
+        player: name,
+        amount: delta,
+        label: `${name} buy-in ${sign}£${Math.abs(delta).toFixed(2)} (now £${next.toFixed(2)})`,
+      });
+    }
+    setLastLoggedBuyIns((s) => ({ ...s, [name]: next }));
   };
 
   const totalBuyIns = players.reduce((sum, p) => sum + p.buyIn, 0);
@@ -418,6 +538,7 @@ function ActiveGameContent() {
       // toasts with the same key, and we dismiss after the action fires so
       // a follow-up tap has nothing to click.
       const toastId = "chip-mismatch";
+      playMismatchSound({ muted: muted() });
       toast.error(
         `CHIP MISMATCH ALERT! \nBuy-ins: £${totalBuyIns.toFixed(2)} | Cash Outs: £${totalCashOuts.toFixed(2)} \nDifference: £${Math.abs(totalBuyIns - totalCashOuts).toFixed(2)}`,
         {
@@ -504,12 +625,17 @@ function ActiveGameContent() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-base font-bold truncate">{p.name}</span>
-                {isLeader && (
-                  <Crown
-                    size={12}
-                    className="text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)] shrink-0"
-                  />
-                )}
+                {/* Always render the crown so the layout doesn't
+                    reflow when the leader changes — invisible for
+                    everyone except the current leader. */}
+                <Crown
+                  size={12}
+                  className={`shrink-0 ${
+                    isLeader
+                      ? "text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]"
+                      : "invisible"
+                  }`}
+                />
               </div>
               <span className={`text-xs ${cashedOut ? "text-white/40" : "text-[#39FF14]/70"} tabular-nums`}>
                 {cashedOut ? "Cashed out" : `£${p.buyIn.toFixed(2)} in`}
@@ -546,6 +672,7 @@ function ActiveGameContent() {
                   pattern="[0-9]*[.,]?[0-9]*"
                   value={p.buyIn === 0 ? "" : p.buyIn}
                   onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
+                  onBlur={() => commitBuyInChange(p.name)}
                   placeholder="0"
                   className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-[#39FF14] focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14] transition-all text-right tabular-nums"
                 />
@@ -578,6 +705,7 @@ function ActiveGameContent() {
                   pattern="[0-9]*[.,]?[0-9]*"
                   value={p.cashOut === null ? "" : p.cashOut}
                   onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
+                  onBlur={() => commitCashOutChange(p.name)}
                   placeholder="—"
                   className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-white focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all text-right tabular-nums"
                 />
@@ -647,12 +775,16 @@ function ActiveGameContent() {
               />
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-lg font-bold truncate">{p.name}</span>
-                {isLeader && (
-                  <Crown
-                    size={12}
-                    className="text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)] shrink-0"
-                  />
-                )}
+                {/* Always render the crown so the column width doesn't
+                    jump when the leader changes mid-game. */}
+                <Crown
+                  size={12}
+                  className={`shrink-0 ${
+                    isLeader
+                      ? "text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]"
+                      : "invisible"
+                  }`}
+                />
               </div>
             </div>
           </td>
@@ -669,6 +801,12 @@ function ActiveGameContent() {
                 pattern="[0-9]*[.,]?[0-9]*"
                 value={p.buyIn === 0 ? "" : p.buyIn}
                 onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
+                // The compiler can't tell that this only runs on blur — false
+                // positive. Identical handler in the mobile-card useMemo is
+                // unflagged. Safe because commitBuyInChange's ref touches all
+                // happen inside the actual blur event.
+                // eslint-disable-next-line react-hooks/refs
+                onBlur={() => commitBuyInChange(p.name)}
                 placeholder="0"
                 className="w-full bg-black/40 border border-white/10 rounded-md py-1 pl-5 pr-2 font-bold text-base md:text-lg text-[#39FF14] focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14] transition-all text-right tabular-nums"
               />
@@ -682,6 +820,9 @@ function ActiveGameContent() {
                 {REBUY_PRESETS.map((amt) => (
                   <button
                     key={amt}
+                    // Same false positive as the buy-in onBlur above —
+                    // rebuyPlayer's ref touches only run on click.
+                    // eslint-disable-next-line react-hooks/refs
                     onClick={() => rebuyPlayer(p.name, amt)}
                     title={`Add £${amt} to buy-in`}
                     className="text-sm font-bold tracking-wider uppercase px-2 py-1 rounded-xl bg-[#39FF14]/5 hover:bg-[#39FF14]/15 border border-[#39FF14]/20 hover:border-[#39FF14]/50 text-[#39FF14] transition-colors flex items-center gap-0.5"
@@ -724,6 +865,7 @@ function ActiveGameContent() {
                 pattern="[0-9]*[.,]?[0-9]*"
                 value={p.cashOut === null ? "" : p.cashOut}
                 onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
+                onBlur={() => commitCashOutChange(p.name)}
                 placeholder="—"
                 className="w-full bg-black/40 border border-white/10 rounded-md py-1 pl-5 pr-2 font-bold text-base md:text-lg text-white focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all text-right tabular-nums"
               />
@@ -799,8 +941,10 @@ function ActiveGameContent() {
   }
 
   if (showResults) {
+    // Food is intentionally excluded from the finalized ranking — it
+    // settles separately at the table, not as part of the chip pot.
     const ranked = [...players]
-      .map((p) => ({ ...p, net: (p.cashOut || 0) - p.buyIn - p.foodSpend }))
+      .map((p) => ({ ...p, net: (p.cashOut || 0) - p.buyIn }))
       .sort((a, b) => b.net - a.net);
 
     return (
@@ -818,50 +962,46 @@ function ActiveGameContent() {
             </div>
           </div>
 
-          {/* Mobile portrait can't fit 5 money columns side-by-side. Wrapping
-              the grid in a horizontal scroll container with a min-width keeps
-              every column readable instead of being crushed off-screen. */}
+          {/* Mobile portrait can't fit the money columns side-by-side.
+              Wrapping in a horizontal scroll container with a min-width
+              keeps every column readable instead of being crushed
+              off-screen. */}
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
             <div className="overflow-x-auto">
-              <div className="min-w-[640px]">
-                <div className="grid grid-cols-5 gap-4 px-5 py-3 border-b border-white/10 bg-black/40 text-sm font-bold text-white/40 uppercase tracking-wider">
+              <div className="min-w-[560px]">
+                <div className="grid grid-cols-4 gap-4 px-5 py-3 border-b border-white/10 bg-black/40 text-sm font-bold text-white/40 uppercase tracking-wider">
                   <div>Player</div>
                   <div className="text-right">Buy-in</div>
                   <div className="text-right">Cash Out</div>
-                  <div className="text-right border-x border-white/10 px-3">Game Profit</div>
-                  <div className="text-right text-[#39FF14]">Total w/ Food</div>
+                  <div className="text-right text-[#39FF14]">Game Profit</div>
                 </div>
                 <div className="divide-y divide-white/5">
-                  {ranked.map((p, i) => {
-                    const gameNet = (p.cashOut || 0) - p.buyIn;
-                    return (
-                      <div
-                        key={p.name}
-                        className="grid grid-cols-5 gap-4 px-5 py-3 items-center hover:bg-white/5 transition-colors"
-                      >
-                        <div className="font-bold flex items-center gap-2">
-                          {i === 0 && <Crown size={14} className="text-yellow-400" />}
-                          <span>{p.name}</span>
-                        </div>
-                        <div className="text-right text-white/70 text-base">£{p.buyIn.toFixed(2)}</div>
-                        <div className="text-right text-white/70 text-base">£{(p.cashOut || 0).toFixed(2)}</div>
-                        <div
-                          className={`text-right border-x border-white/10 px-3 font-black ${
-                            gameNet >= 0 ? "text-white" : "text-red-400"
-                          }`}
-                        >
-                          {gameNet > 0 ? "+" : ""}£{gameNet.toFixed(2)}
-                        </div>
-                        <div
-                          className={`text-right font-black text-xl ${
-                            p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
-                          }`}
-                        >
-                          {p.net > 0 ? "+" : ""}£{p.net.toFixed(2)}
-                        </div>
+                  {ranked.map((p, i) => (
+                    <div
+                      key={p.name}
+                      className="grid grid-cols-4 gap-4 px-5 py-3 items-center hover:bg-white/5 transition-colors"
+                    >
+                      <div className="font-bold flex items-center gap-2">
+                        {/* Crown is always in the DOM so the column
+                            width doesn't jump when the leader changes
+                            between players. */}
+                        <Crown
+                          size={14}
+                          className={`shrink-0 ${i === 0 ? "text-yellow-400" : "invisible"}`}
+                        />
+                        <span>{p.name}</span>
                       </div>
-                    );
-                  })}
+                      <div className="text-right text-white/70 text-base">£{p.buyIn.toFixed(2)}</div>
+                      <div className="text-right text-white/70 text-base">£{(p.cashOut || 0).toFixed(2)}</div>
+                      <div
+                        className={`text-right font-black text-xl ${
+                          p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
+                        }`}
+                      >
+                        {p.net > 0 ? "+" : ""}£{p.net.toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1062,12 +1202,14 @@ function ActiveGameContent() {
             {events.map((ev) => {
               const color =
                 ev.type === "rebuy" ? "text-[#39FF14]" :
+                ev.type === "buyin" ? "text-[#39FF14]" :
                 ev.type === "bust" ? "text-red-400" :
                 ev.type === "level" ? "text-cyan-400" :
                 ev.type === "undo" ? "text-yellow-400" :
                 "text-white/40";
               const icon =
                 ev.type === "rebuy" ? "+" :
+                ev.type === "buyin" ? "£" :
                 ev.type === "bust" ? "✕" :
                 ev.type === "level" ? "▲" :
                 ev.type === "undo" ? "↩" : "·";
