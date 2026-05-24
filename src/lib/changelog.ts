@@ -27,6 +27,14 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.4",
+    date: "May 24, 2026",
+    summary: "Dashboard nudges non-voters once a game day is confirmed",
+    items: [
+      { category: "Scheduling", type: "feature", text: "Dashboard now shows a yellow 'RSVP needed' banner to anyone who hasn't voted on a confirmed game day inside the next 7 days. Saying yes, maybe, or no all dismiss it — silence does not." },
+    ],
+  },
+  {
     version: "1.7.3",
     date: "May 24, 2026",
     summary: "Retired chip-stack photos on historic games",

@@ -7,17 +7,18 @@ import { Calendar, ChevronRight, Crown, AlertTriangle } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Poll, PollOption, Rsvp, tallyPoll } from "@/lib/polls";
 
-// Drop-in banner for the dashboard. Shows three things in priority order:
+// Drop-in banner for the dashboard. Shows four things in priority order:
 //   1. There's an open poll for this weekend that I haven't voted on → "Vote now"
-//   2. There's a confirmed game with yeses below the minimum → "Re-poll needed"
-//   3. There's a confirmed game in the next 7 days I said yes to → reminder
+//   2. There's a confirmed game in the next 7 days I haven't RSVP'd to → "RSVP"
+//   3. There's a confirmed game with yeses below the minimum → "Re-poll needed"
+//   4. There's a confirmed game in the next 7 days I said yes to → reminder
 // Renders nothing if none of the above match.
 
 type Hit = {
   poll: Poll;
   options: PollOption[];
   rsvps: Rsvp[];
-  variant: "vote-needed" | "below-min" | "upcoming-yes";
+  variant: "vote-needed" | "rsvp-needed" | "below-min" | "upcoming-yes";
 };
 
 export default function PollBanner() {
@@ -73,7 +74,31 @@ export default function PollBanner() {
         }
       }
 
-      // Priority 2: a confirmed poll where yes-count for the confirmed option
+      // Priority 2: a confirmed poll inside the next 7 days where the
+      // signed-in user has no RSVP on the confirmed option yet. Nudges
+      // late joiners to commit one way or the other so the head count is
+      // accurate by game day.
+      if (userId) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const inAWeek = new Date(today); inAWeek.setDate(inAWeek.getDate() + 7);
+
+        for (const p of pollsData as Poll[]) {
+          if (p.status !== "confirmed" || !p.confirmed_option_id) continue;
+          const opt = (optsByPoll[p.id] ?? []).find((o) => o.id === p.confirmed_option_id);
+          if (!opt) continue;
+          const gameDate = new Date(opt.game_date + "T00:00:00");
+          if (gameDate < today || gameDate > inAWeek) continue;
+          const haveIRsvpd = (rsvpsByPoll[p.id] ?? []).some(
+            (r) => r.user_id === userId && r.poll_option_id === opt.id,
+          );
+          if (!haveIRsvpd) {
+            setHit({ poll: p, options: optsByPoll[p.id] ?? [], rsvps: rsvpsByPoll[p.id] ?? [], variant: "rsvp-needed" });
+            return;
+          }
+        }
+      }
+
+      // Priority 3: a confirmed poll where yes-count for the confirmed option
       // has fallen below min_players (so admin needs to repoll).
       for (const p of pollsData as Poll[]) {
         if (p.status !== "confirmed" || !p.confirmed_option_id) continue;
@@ -89,7 +114,7 @@ export default function PollBanner() {
         }
       }
 
-      // Priority 3: confirmed game in the next 7 days that I said yes to.
+      // Priority 4: confirmed game in the next 7 days that I said yes to.
       if (userId) {
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const inAWeek = new Date(today); inAWeek.setDate(inAWeek.getDate() + 7);
@@ -147,6 +172,15 @@ function Banner({ hit }: { hit: Hit }) {
     cta = "Vote now";
     accent = "border-cyan-400/40 bg-cyan-400/10";
     iconColor = "text-cyan-400";
+  } else if (hit.variant === "rsvp-needed") {
+    icon = <Calendar size={20} />;
+    title = "RSVP needed";
+    subtitle = opt
+      ? `Game on ${formatDateShort(opt.game_date)} — let us know if you're in.`
+      : "Confirm whether you're coming.";
+    cta = "RSVP";
+    accent = "border-yellow-400/40 bg-yellow-400/10";
+    iconColor = "text-yellow-400";
   } else if (hit.variant === "below-min") {
     icon = <AlertTriangle size={20} />;
     title = "Re-poll needed";
