@@ -27,6 +27,14 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.3",
+    date: "May 24, 2026",
+    summary: "Retired chip-stack photos on historic games",
+    items: [
+      { category: "Polish", type: "improvement", text: "Removed the chip-stack photo panel from historic game pages. The end-of-game chip-mismatch check already forces buy-ins and cash-outs to reconcile before a game can be finalised, so the photo evidence was no longer earning its keep." },
+    ],
+  },
+  {
     version: "1.7.2",
     date: "May 24, 2026",
     summary: "One poll per month, auto-created at game-end, spanning the calendar boundary",

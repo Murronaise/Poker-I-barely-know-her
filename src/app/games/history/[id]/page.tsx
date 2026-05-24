@@ -16,7 +16,6 @@ import HistoryActions from "@/components/HistoryActions";
 import SettlementSettleButton from "@/components/SettlementSettleButton";
 import AdminGameNotes from "@/components/AdminGameNotes";
 import { fetchGameNote } from "@/lib/game-notes-db";
-import GamePhotos from "@/components/GamePhotos";
 import { getHistoricalGame } from "@/lib/historical-games";
 import { FOOD_PAYER, ADMIN_PLAYER } from "@/lib/local-store";
 import { supabase } from "@/lib/supabase";
@@ -237,16 +236,6 @@ export default async function HistoricalGamePage({
       {userIsAdmin && (
         <AdminGameNotes gameId={game.id} initialNote={adminNote} />
       )}
-
-      {/* Chip-stack / table photos — public read, upload gated to signed-in
-          users. Players list drives the per-player attach affordance so
-          each chip-stack shot gets tagged with whose stack it is. */}
-      <GamePhotos
-        gameId={game.id}
-        canUpload={Boolean(user)}
-        players={game.players.map((p) => ({ name: p.name, avatarUrl: avatarMap[p.name] }))}
-      />
-
 
       {/* Settlement table */}
       <CollapsibleSection title="Results" icon={<Crown size={18} className="text-yellow-400"/>} defaultOpen={false}>
