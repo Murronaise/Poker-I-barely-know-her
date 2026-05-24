@@ -7,18 +7,24 @@ import { Calendar, ChevronRight, Crown, AlertTriangle } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Poll, PollOption, Rsvp, tallyPoll } from "@/lib/polls";
 
-// Drop-in banner for the dashboard. Shows four things in priority order:
+// Drop-in banner for the dashboard. Shows five things in priority order:
 //   1. There's an open poll for this weekend that I haven't voted on → "Vote now"
 //   2. There's a confirmed game in the next 7 days I haven't RSVP'd to → "RSVP"
 //   3. There's a confirmed game with yeses below the minimum → "Re-poll needed"
 //   4. There's a confirmed game in the next 7 days I said yes to → reminder
+//   5. (Anonymous viewer) There's a confirmed game in the next 7 days → "Log in to RSVP"
 // Renders nothing if none of the above match.
 
 type Hit = {
   poll: Poll;
   options: PollOption[];
   rsvps: Rsvp[];
-  variant: "vote-needed" | "rsvp-needed" | "below-min" | "upcoming-yes";
+  variant:
+    | "vote-needed"
+    | "rsvp-needed"
+    | "below-min"
+    | "upcoming-yes"
+    | "anon-rsvp";
 };
 
 export default function PollBanner() {
@@ -133,6 +139,25 @@ export default function PollBanner() {
         }
       }
 
+      // Priority 5: anonymous viewer sees a confirmed game in the next 7
+      // days — prompt them to log in / sign up so they can RSVP. Visitors
+      // who just landed on the dashboard shouldn't have to dig through
+      // pages to discover there's a game on.
+      if (!userId) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const inAWeek = new Date(today); inAWeek.setDate(inAWeek.getDate() + 7);
+
+        for (const p of pollsData as Poll[]) {
+          if (p.status !== "confirmed" || !p.confirmed_option_id) continue;
+          const opt = (optsByPoll[p.id] ?? []).find((o) => o.id === p.confirmed_option_id);
+          if (!opt) continue;
+          const gameDate = new Date(opt.game_date + "T00:00:00");
+          if (gameDate < today || gameDate > inAWeek) continue;
+          setHit({ poll: p, options: optsByPoll[p.id] ?? [], rsvps: rsvpsByPoll[p.id] ?? [], variant: "anon-rsvp" });
+          return;
+        }
+      }
+
       setHit(null);
     };
 
@@ -181,6 +206,15 @@ function Banner({ hit }: { hit: Hit }) {
     cta = "RSVP";
     accent = "border-yellow-400/40 bg-yellow-400/10";
     iconColor = "text-yellow-400";
+  } else if (hit.variant === "anon-rsvp") {
+    icon = <Calendar size={20} />;
+    title = "Game on — log in to RSVP";
+    subtitle = opt
+      ? `${formatDateShort(opt.game_date)} — sign in or sign up so we know if you're coming.`
+      : "Sign in or sign up so we know if you're coming.";
+    cta = "Log in";
+    accent = "border-yellow-400/40 bg-yellow-400/10";
+    iconColor = "text-yellow-400";
   } else if (hit.variant === "below-min") {
     icon = <AlertTriangle size={20} />;
     title = "Re-poll needed";
@@ -204,7 +238,9 @@ function Banner({ hit }: { hit: Hit }) {
   // they keep their direct link.
   const href = hit.variant === "vote-needed"
     ? "/games/poll"
-    : `/games/poll/${hit.poll.id}`;
+    : hit.variant === "anon-rsvp"
+      ? "/login"
+      : `/games/poll/${hit.poll.id}`;
 
   return (
     <motion.div

@@ -27,6 +27,15 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.5",
+    date: "May 24, 2026",
+    summary: "Polls page no longer hangs on skeleton cards; anon visitors get a prompt to log in for upcoming games",
+    items: [
+      { category: "Scheduling", type: "fix", text: "Polls page would sometimes stay stuck on its skeleton cards until you refreshed — a query error was swallowed before the loading flag could clear. Now the page always finishes loading, even if a fetch fails." },
+      { category: "Scheduling", type: "feature", text: "Anonymous visitors landing on the dashboard with a confirmed game in the next 7 days now see a 'Game on — log in to RSVP' banner that deep-links to the login page." },
+    ],
+  },
+  {
     version: "1.7.4",
     date: "May 24, 2026",
     summary: "Dashboard nudges non-voters once a game day is confirmed",

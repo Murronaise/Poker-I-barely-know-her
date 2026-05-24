@@ -24,29 +24,37 @@ export default function PollsListPage() {
   const [me, setMe] = useState<{ id: string } | null>(null);
 
   const load = useCallback(async () => {
-    const [{ data: pollsData }, { data: optionsData }, { data: rsvpsData }] = await Promise.all([
-      supabase.from("polls").select("*").order("weekend_start_date", { ascending: false }),
-      supabase.from("poll_options").select("*"),
-      supabase.from("rsvps").select("*"),
-    ]);
+    // Without try/finally we stay stuck on the skeleton forever the moment
+    // any query throws (transient network blip, Supabase 5xx, etc.) —
+    // setLoading(false) never fires and the cards just pulse indefinitely.
+    try {
+      const [{ data: pollsData }, { data: optionsData }, { data: rsvpsData }] = await Promise.all([
+        supabase.from("polls").select("*").order("weekend_start_date", { ascending: false }),
+        supabase.from("poll_options").select("*"),
+        supabase.from("rsvps").select("*"),
+      ]);
 
-    const optionsByPoll: Record<string, PollOption[]> = {};
-    (optionsData ?? []).forEach((o: PollOption) => {
-      (optionsByPoll[o.poll_id] ||= []).push(o);
-    });
+      const optionsByPoll: Record<string, PollOption[]> = {};
+      (optionsData ?? []).forEach((o: PollOption) => {
+        (optionsByPoll[o.poll_id] ||= []).push(o);
+      });
 
-    const rsvpsByPoll: Record<string, Rsvp[]> = {};
-    (rsvpsData ?? []).forEach((r: Rsvp) => {
-      (rsvpsByPoll[r.poll_id] ||= []).push(r);
-    });
+      const rsvpsByPoll: Record<string, Rsvp[]> = {};
+      (rsvpsData ?? []).forEach((r: Rsvp) => {
+        (rsvpsByPoll[r.poll_id] ||= []).push(r);
+      });
 
-    const merged: PollWithCounts[] = (pollsData ?? []).map((p: Poll) => ({
-      ...p,
-      options: optionsByPoll[p.id] ?? [],
-      rsvps: rsvpsByPoll[p.id] ?? [],
-    }));
-    setPolls(merged);
-    setLoading(false);
+      const merged: PollWithCounts[] = (pollsData ?? []).map((p: Poll) => ({
+        ...p,
+        options: optionsByPoll[p.id] ?? [],
+        rsvps: rsvpsByPoll[p.id] ?? [],
+      }));
+      setPolls(merged);
+    } catch (err) {
+      console.error("[polls] load failed:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
 
   useEffect(() => {
