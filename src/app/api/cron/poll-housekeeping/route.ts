@@ -75,7 +75,10 @@ async function runHousekeeping() {
   const { data: candidates, error: candidatesErr } = await sb
     .from("polls")
     .select(
-      "id, created_by, created_at, updated_at, weekend_start_date, status, confirmed_option_id, min_players, parent_poll_id, notes, options:poll_options(*), rsvps(*)",
+      // Disambiguate the embed — there are two FKs between polls and
+      // poll_options (poll_options.poll_id and polls.confirmed_option_id).
+      // Without the !poll_options_poll_id_fkey hint, PostgREST errors out.
+      "id, created_by, created_at, updated_at, weekend_start_date, status, confirmed_option_id, min_players, parent_poll_id, notes, options:poll_options!poll_options_poll_id_fkey(*), rsvps(*)",
     )
     .eq("status", "open")
     .lte("weekend_start_date", verdictCutoffIso);
