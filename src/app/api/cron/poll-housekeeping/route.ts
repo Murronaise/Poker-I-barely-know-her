@@ -1,17 +1,22 @@
-// Daily poll-housekeeping cron.
+// Daily poll-housekeeping cron — verdict pass only.
 //
 // What it does:
-//   1. At T-7 days from game day, decides each open poll in a single pass:
-//      - Pick the option with the most yes votes (ties: most maybes, then
-//        earliest date — see suggestWinner).
-//      - If that option has >= min_players yes votes, mark the poll
-//        `confirmed` and lock the winning option in.
-//      - Otherwise mark the poll `cancelled`.
-//      The window is "weekend_start_date <= today+7" so polls added late
-//      (e.g. 4 days out) still get a verdict on the next cron run.
-//   2. (Optional) Auto-creates a poll for the next first-or-last weekend
-//      of the month when one doesn't already exist — gives the
-//      "recurring weekly slot" feature with no per-week clicks.
+//   For each open poll, pick the leading option among its still-future
+//   game dates (suggestWinner: most yes, then most maybe, then earliest).
+//   Decide based on the leader's distance from today:
+//     - leader.game_date <= today+7 AND yes >= min_players → CONFIRM that
+//       option (lock in, RSVP stays open on the confirmed date only).
+//     - latest viable option.game_date <= today+7 AND no option has hit
+//       quorum → CANCEL the poll.
+//     - otherwise → leave open; wait for more votes.
+//   This is per-option dynamic so a single poll spanning two weekends
+//   can lock the early or late option independently as the calendar
+//   approaches each.
+//
+// What it no longer does:
+//   Auto-create polls. That has moved to the game-end trigger
+//   (/api/polls/create-monthly), which fires the next monthly boundary
+//   pair once a live game is wrapped up.
 //
 // Trigger: configure Vercel Cron (or any external scheduler) to POST this
 // endpoint daily. We accept GET too so curl-driven testing is trivial.
@@ -25,9 +30,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import {
   DEFAULT_MIN_PLAYERS,
-  suggestWinner,
-  upcomingFirstAndLastWeekends,
+  tallyPoll,
   type PollWithDetails,
+  type PollOption,
 } from "@/lib/polls";
 
 export const dynamic = "force-dynamic";
@@ -54,30 +59,28 @@ function requireCronAuth(req: NextRequest): NextResponse | null {
 
 async function runHousekeeping() {
   // The service client bypasses RLS — required because cron runs anonymous
-  // server-side and the writes (poll status, poll inserts) are admin-gated.
+  // server-side and the writes (poll status) are admin-gated.
   const sb = createSupabaseServiceClient();
 
   const summary = {
     cancelled: [] as string[],
     confirmed: [] as string[],
-    created: [] as string[],
     errors: [] as string[],
   };
 
-  // 1. T-7 verdict pass: confirm if the winning option has min_players yes
-  //    votes, otherwise cancel. Catches anything inside the 7-day window so
-  //    polls created late still get a verdict on the next cron run.
   const now = new Date();
+  const todayIso = now.toISOString().split("T")[0];
   const verdictCutoffIso = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
 
+  // Pull every open poll whose earliest Friday is within reach. Polls
+  // whose earliest option is still > 7 days out aren't actionable today.
   const { data: candidates, error: candidatesErr } = await sb
     .from("polls")
     .select(
       // Disambiguate the embed — there are two FKs between polls and
       // poll_options (poll_options.poll_id and polls.confirmed_option_id).
-      // Without the !poll_options_poll_id_fkey hint, PostgREST errors out.
       "id, created_by, created_at, updated_at, weekend_start_date, status, confirmed_option_id, min_players, parent_poll_id, notes, options:poll_options!poll_options_poll_id_fkey(*), rsvps(*)",
     )
     .eq("status", "open")
@@ -87,23 +90,56 @@ async function runHousekeeping() {
   }
 
   for (const poll of (candidates ?? []) as unknown as PollWithDetails[]) {
-    // Empty scaffold polls (auto-created but never populated with dates) get
-    // skipped — they're not "rejected by quorum", they're just unfinished.
+    // Empty scaffold polls (created but never populated) get skipped —
+    // they're not "rejected by quorum", they're just unfinished.
     if (poll.options.length === 0) continue;
-    const threshold = poll.min_players ?? DEFAULT_MIN_PLAYERS;
-    const winner = suggestWinner(poll);
-    const yesForWinner = winner
-      ? poll.rsvps.filter(
-          (r) => r.poll_option_id === winner.id && r.response === "yes",
-        ).length
-      : 0;
 
-    if (winner && yesForWinner >= threshold) {
+    const threshold = poll.min_players ?? DEFAULT_MIN_PLAYERS;
+
+    // Only consider options whose game_date hasn't already passed.
+    const viable = poll.options.filter((o) => o.game_date >= todayIso);
+    if (viable.length === 0) {
+      // Every option is in the past — cancel so it stops cluttering the
+      // open list.
+      const { error: cancelErr } = await sb
+        .from("polls")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", poll.id);
+      if (cancelErr) {
+        summary.errors.push(`cancel-stale ${poll.id}: ${cancelErr.message}`);
+        continue;
+      }
+      summary.cancelled.push(poll.id);
+      continue;
+    }
+
+    // Tally yes/maybe per option, then pick the leader among viable
+    // options only.
+    const tallies = tallyPoll(poll);
+    const leader: PollOption = [...viable].sort((a, b) => {
+      const ta = tallies.get(a.id)!;
+      const tb = tallies.get(b.id)!;
+      if (tb.yes !== ta.yes) return tb.yes - ta.yes;
+      if (tb.maybe !== ta.maybe) return tb.maybe - ta.maybe;
+      return a.game_date.localeCompare(b.game_date);
+    })[0];
+    const leaderYes = tallies.get(leader.id)?.yes ?? 0;
+
+    // Is the leader actually inside the 7-day verdict window?
+    const leaderInWindow = leader.game_date <= verdictCutoffIso;
+    // Is EVERY remaining option inside the window? If so, time's up.
+    const latestViableDate = viable
+      .map((o) => o.game_date)
+      .sort()
+      .at(-1)!;
+    const windowExpired = latestViableDate <= verdictCutoffIso;
+
+    if (leaderInWindow && leaderYes >= threshold) {
       const { error: confirmErr } = await sb
         .from("polls")
         .update({
           status: "confirmed",
-          confirmed_option_id: winner.id,
+          confirmed_option_id: leader.id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", poll.id);
@@ -112,7 +148,8 @@ async function runHousekeeping() {
         continue;
       }
       summary.confirmed.push(poll.id);
-    } else {
+    } else if (windowExpired) {
+      // No remaining option can still gather more votes — cancel.
       const { error: cancelErr } = await sb
         .from("polls")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
@@ -123,54 +160,8 @@ async function runHousekeeping() {
       }
       summary.cancelled.push(poll.id);
     }
-  }
-
-  // 2. Auto-create the next two first/last weekend polls if absent.
-  // The `polls.created_by` column is NOT NULL with a FK to auth.users —
-  // the cron has no logged-in user, so we attribute these auto-created
-  // polls to the first admin we can find. If no admin exists yet (fresh
-  // deploy before anyone's been promoted), skip auto-creation rather
-  // than choke on the constraint.
-  const { data: adminRow } = await sb
-    .from("users")
-    .select("user_id")
-    .eq("is_admin", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const cronActorId: string | null = adminRow?.user_id ?? null;
-
-  if (!cronActorId) {
-    summary.errors.push(
-      "skipped auto-create: no admin user exists yet — promote someone via users.is_admin = true.",
-    );
-  } else {
-    const targets = upcomingFirstAndLastWeekends(new Date(), 2);
-    for (const slot of targets) {
-      const friday = slot.friday.toISOString().split("T")[0];
-      const { data: existing } = await sb
-        .from("polls")
-        .select("id")
-        .eq("weekend_start_date", friday)
-        .limit(1);
-      if (existing && existing.length > 0) continue;
-      const { data: inserted, error: insertErr } = await sb
-        .from("polls")
-        .insert({
-          weekend_start_date: friday,
-          status: "open",
-          min_players: DEFAULT_MIN_PLAYERS,
-          created_by: cronActorId,
-          notes: `Auto-created by housekeeping for ${slot.position} weekend of ${slot.monthLabel}`,
-        })
-        .select("id")
-        .single();
-      if (insertErr) {
-        summary.errors.push(`create ${friday}: ${insertErr.message}`);
-        continue;
-      }
-      summary.created.push(inserted.id);
-    }
+    // else: there's still a later option outside the verdict window —
+    // wait, votes might still come in for it.
   }
 
   return summary;

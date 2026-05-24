@@ -450,6 +450,24 @@ function ActiveGameContent() {
     setShowResults(true);
     playFinalizeSound({ muted: muted() });
     clearLiveGameId();
+
+    // Fire-and-forget the next monthly poll. The endpoint is idempotent
+    // (skip if a poll already exists for the computed boundary pair) and
+    // admin-gated, so non-admin viewers will just get a 403 we silently
+    // swallow. Don't await — we don't want the end-of-game UI to wait on
+    // a server round-trip.
+    void fetch("/api/polls/create-monthly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok && j.created) {
+          toast.success("Next month's poll created.");
+        }
+      })
+      .catch(() => {/* swallow — best-effort */});
   };
 
   const fillPct = Math.max(0, Math.min(100, (timeLeft / (maxTime || 1)) * 100));

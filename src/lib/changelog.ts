@@ -27,6 +27,17 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.2",
+    date: "May 24, 2026",
+    summary: "One poll per month, auto-created at game-end, spanning the calendar boundary",
+    items: [
+      { category: "Scheduling", type: "feature", text: "Ending a live game now auto-creates the next month's poll. It spans two weekends — the last weekend of the current month and the first weekend of the next — so the group has one rolling poll with built-in flex around the calendar boundary." },
+      { category: "Scheduling", type: "improvement", text: "Each weekend in a poll offers Friday and Saturday by default. Sunday only appears when the following Monday is a UK bank holiday, so we never accidentally suggest a school-night start." },
+      { category: "Scheduling", type: "improvement", text: "Verdict logic is now per-option: the cron looks at every still-future date in a poll, picks the leading one, and only confirms/cancels when that date is inside the 7-day window. A poll spanning two weekends can lock the early option early or wait for votes on the later one." },
+      { category: "Scheduling", type: "improvement", text: "The daily housekeeping cron no longer auto-creates polls — creation only happens at game-end or when an admin makes one by hand. Removes the empty-scaffold polls that were appearing once a day.", adminOnly: true },
+    ],
+  },
+  {
     version: "1.7.1",
     date: "May 24, 2026",
     summary: "Polls decide themselves a week ahead — and stay open for late RSVPs",

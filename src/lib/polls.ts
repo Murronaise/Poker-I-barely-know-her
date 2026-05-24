@@ -182,6 +182,54 @@ export function upcomingFirstAndLastWeekends(
     .slice(0, count);
 }
 
+/**
+ * Returns the next "monthly boundary pair" strictly after `after`. A pair is
+ * the (last weekend of monthN, first weekend of monthN+1) tuple — both keyed
+ * by their Friday. We use this to auto-create the single monthly poll after
+ * a game ends: the new poll's options span both weekends so the group has
+ * one decision per month with built-in flex around the calendar boundary.
+ *
+ * A pair qualifies when its earliest Friday (the "last of monthN") is
+ * strictly after `after` — i.e. there's no point creating a poll whose
+ * earliest playable date has already passed.
+ */
+export function nextMonthlyBoundaryPair(after: Date): {
+  lastFriday: Date;
+  firstFridayNext: Date;
+} {
+  const cursor = new Date(after);
+  cursor.setHours(0, 0, 0, 0);
+  // We probe at most ~24 months out; in practice the loop returns on the
+  // first or second iteration but we bound it so a bad input can't spin.
+  for (let i = 0; i < 24; i++) {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const lastFriday = lastFridayOfMonth(year, month);
+    if (lastFriday > after) {
+      // First Friday of the following month.
+      const nextMonth = new Date(year, month + 1, 1);
+      const firstFridayNext = firstFridayOfMonth(
+        nextMonth.getFullYear(),
+        nextMonth.getMonth(),
+      );
+      return { lastFriday, firstFridayNext };
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  // Unreachable in practice — the loop covers 2 years from any starting
+  // date. If it ever falls through, return something rather than throw so
+  // the caller's error path is just "duplicate poll", not 500.
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const lastFriday = lastFridayOfMonth(year, month);
+  const nextMonth = new Date(year, month + 1, 1);
+  const firstFridayNext = firstFridayOfMonth(
+    nextMonth.getFullYear(),
+    nextMonth.getMonth(),
+  );
+  return { lastFriday, firstFridayNext };
+}
+
 /** Is `friday` the first OR last Friday of its month? */
 export function isFirstOrLastWeekend(friday: Date): boolean {
   const year = friday.getFullYear();
