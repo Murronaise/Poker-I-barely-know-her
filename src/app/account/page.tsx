@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, UserCircle, Save, LogOut, Lock, ChevronRight, BadgeCheck, Wallet } from "lucide-react";
@@ -8,7 +8,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { validatePlayerName, validatePassword, PLAYER_NAME_MAX } from "@/lib/validation";
 import { emitProfileUpdated } from "@/lib/profile-events";
 import { profileSlug } from "@/lib/registered-players";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { normaliseHandle, PROVIDER_LABEL, type PaymentHandles } from "@/lib/payment-links";
 
@@ -27,6 +28,17 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
+
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    fetchEffectiveGames(sb).then((res) => {
+      if (!cancelled) setGames(res);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -316,11 +328,12 @@ export default function AccountPage() {
   // Count historical sessions where the player's name matches (case-insensitive).
   // The match is implicit: their player_name IS their profile.
   const lowerName = (originalName || playerName).toLowerCase();
-  const sessionCount = lowerName
-    ? historicalGames.filter((g) =>
-        g.players.some((p) => p.name.toLowerCase() === lowerName),
-      ).length
-    : 0;
+  const sessionCount = useMemo(() => {
+    if (!lowerName) return 0;
+    return games.filter((g) =>
+      g.players.some((p) => p.name.toLowerCase() === lowerName),
+    ).length;
+  }, [lowerName, games]);
   const profileHref = lowerName ? `/profile/${profileSlug(originalName || playerName)}` : null;
 
   return (

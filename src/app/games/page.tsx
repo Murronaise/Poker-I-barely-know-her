@@ -17,7 +17,7 @@ import {
   Vote,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
 import { getEffectiveHistoricalGames, getEffectiveHistoricalGamesWith } from "@/lib/game-store";
 import { getDeletedGameIds } from "@/lib/local-store";
 import { fetchDeletedGameIds } from "@/lib/soft-delete-db";
@@ -27,7 +27,7 @@ import { isAdmin } from "@/lib/auth";
 import { useState, useEffect, useMemo } from "react";
 
 export default function GamesIndexPage() {
-  const [games, setGames] = useState(historicalGames);
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
   const [searchQuery, setSearchQuery] = useState("");
   const [isAdminUser, setIsAdminUser] = useState(false);
   const supabase = createSupabaseBrowserClient();

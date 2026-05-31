@@ -4,7 +4,7 @@ import { ChevronLeft, GitMerge } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdminDb } from "@/lib/auth";
 import { fetchAliasRecords } from "@/lib/aliases-db";
-import { historicalGames } from "@/lib/historical-games";
+import { fetchEffectiveGames } from "@/lib/game-store";
 import AliasForm from "@/components/AliasForm";
 import AliasRow from "@/components/AliasRow";
 
@@ -16,13 +16,16 @@ export default async function AdminMergePage() {
   const userIsAdmin = await isAdminDb(sb, user?.email);
   if (!userIsAdmin) redirect("/");
 
-  const aliases = await fetchAliasRecords(sb);
+  const [aliases, games] = await Promise.all([
+    fetchAliasRecords(sb),
+    fetchEffectiveGames(sb),
+  ]);
 
   // Detect candidate variants in the existing data — case-different
   // versions of the same lowercase name are common enough that surfacing
   // them as one-click suggestions saves typing.
   const namesByLower = new Map<string, Set<string>>();
-  for (const g of historicalGames) {
+  for (const g of games) {
     for (const p of g.players) {
       const lower = p.name.toLowerCase();
       if (!namesByLower.has(lower)) namesByLower.set(lower, new Set());

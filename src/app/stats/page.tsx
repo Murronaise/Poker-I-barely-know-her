@@ -25,52 +25,70 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import { useState, useEffect, useMemo } from "react";
 import { useIsMounted } from "@/lib/use-hydration";
-import { historicalGames } from "@/lib/historical-games";
+import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function StatsPage() {
   const isMounted = useIsMounted();
 
-  const games = [...historicalGames].sort((a, b) => a.id.localeCompare(b.id));
-  const sessionCount = games.length;
-  const totalVolume = games.reduce((sum, g) => sum + g.totalPot, 0);
-  const totalBuyIns = games.reduce(
+  const [gamesList, setGamesList] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    fetchEffectiveGames(sb).then((res) => {
+      if (!cancelled) setGamesList(res);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const games = useMemo(() => [...gamesList].sort((a, b) => a.id.localeCompare(b.id)), [gamesList]);
+  const sessionCount = useMemo(() => games.length, [games]);
+  const totalVolume = useMemo(() => games.reduce((sum, g) => sum + g.totalPot, 0), [games]);
+  const totalBuyIns = useMemo(() => games.reduce(
     (sum, g) => sum + g.players.reduce((s, p) => s + p.buyIn, 0),
     0,
-  );
-  const totalFood = games.reduce(
+  ), [games]);
+  const totalFood = useMemo(() => games.reduce(
     (sum, g) => sum + g.players.reduce((s, p) => s + p.food, 0),
     0,
-  );
-  const avgPot = sessionCount > 0 ? totalVolume / sessionCount : 0;
-  const biggestGame = games.reduce(
+  ), [games]);
+  const avgPot = useMemo(() => sessionCount > 0 ? totalVolume / sessionCount : 0, [totalVolume, sessionCount]);
+  
+  const biggestGame = useMemo(() => games.reduce(
     (best, g) => (g.totalPot > (best?.totalPot ?? 0) ? g : best),
-    games[0],
-  );
-  const smallestGame = games.reduce(
+    games[0] || null,
+  ), [games]);
+  
+  const smallestGame = useMemo(() => games.reduce(
     (worst, g) => (g.totalPot < (worst?.totalPot ?? Infinity) ? g : worst),
-    games[0],
-  );
+    games[0] || null,
+  ), [games]);
 
   // Volume per player (sum of buy-ins across every session they joined).
-  const playerVolumeMap: Record<string, number> = {};
-  games.forEach((g) =>
-    g.players.forEach((p) => {
-      playerVolumeMap[p.name] = (playerVolumeMap[p.name] ?? 0) + p.buyIn;
-    }),
-  );
-  const playerVolume = Object.entries(playerVolumeMap)
-    .map(([name, buyIn]) => ({ name, buyIn }))
-    .sort((a, b) => b.buyIn - a.buyIn);
+  const playerVolume = useMemo(() => {
+    const playerVolumeMap: Record<string, number> = {};
+    games.forEach((g) =>
+      g.players.forEach((p) => {
+        playerVolumeMap[p.name] = (playerVolumeMap[p.name] ?? 0) + p.buyIn;
+      }),
+    );
+    return Object.entries(playerVolumeMap)
+      .map(([name, buyIn]) => ({ name, buyIn }))
+      .sort((a, b) => b.buyIn - a.buyIn);
+  }, [games]);
 
   // Per-session bar chart data (chronological).
-  const chartData = games.map((g) => ({
+  const chartData = useMemo(() => games.map((g) => ({
     label: g.date.replace(/, \d{4}$/, ""),
     pot: g.totalPot,
     id: g.id,
-  }));
+  })), [games]);
 
-  const headline: { label: string; value: string; icon: typeof Coins; color: string }[] = [
+  const headline = useMemo(() => [
     {
       label: "Total Volume",
       value: `£${totalVolume.toLocaleString()}`,
@@ -95,7 +113,7 @@ export default function StatsPage() {
       icon: Pizza,
       color: "text-orange-400",
     },
-  ];
+  ], [totalVolume, avgPot, totalBuyIns, totalFood]);
 
   return (
     <motion.main

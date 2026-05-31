@@ -6,7 +6,7 @@
 // { unlocked: false } plus a `progress` 0..1 number for "you're 60% there"
 // hints on locked badges.
 
-import { historicalGames } from "./historical-games";
+import { historicalGames, type HistoricalGame } from "./historical-games";
 
 export type PlayerSession = {
   id: string;
@@ -262,11 +262,14 @@ export const ACHIEVEMENTS: (Achievement & { evaluate: Eval })[] = [
  * run every rule against it. Returns the full set so the UI can render
  * locked badges too.
  */
-export function evaluatePlayerAchievements(playerName: string): EvaluatedAchievement[] {
+export function evaluatePlayerAchievements(
+  playerName: string,
+  games: HistoricalGame[] = historicalGames,
+): EvaluatedAchievement[] {
   const lower = playerName.toLowerCase();
   const sessions: PlayerSession[] = [];
-  // historicalGames is most-recent-first; reverse so the rules see oldest first.
-  for (const g of [...historicalGames].reverse()) {
+  // games is most-recent-first; reverse so the rules see oldest first.
+  for (const g of [...games].reverse()) {
     const me = g.players.find((p) => p.name.toLowerCase() === lower);
     if (!me) continue;
     sessions.push({

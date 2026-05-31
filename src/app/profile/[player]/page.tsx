@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useRef, useEffect } from "react";
+import { use, useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -19,6 +19,7 @@ import {
   Settings,
   Eye,
   Crown,
+  BadgeCheck,
 } from "lucide-react";
 import {
   AreaChart,
@@ -36,11 +37,11 @@ import AvatarPositioner from "@/components/AvatarPositioner";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import { supabase } from "@/lib/supabase";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
 import { isAdmin } from "@/lib/auth";
-import { BadgeCheck } from "lucide-react";
 import { toast } from "sonner";
 import PlayerOutstandingBalance from "@/components/PlayerOutstandingBalance";
 import AchievementsGrid from "@/components/AchievementsGrid";
@@ -82,6 +83,19 @@ export default function ProfilePage({
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [posBump, setPosBump] = useState(0); // forces PlayerAvatar to re-read stored position
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Dynamic state for effective games (initialized to sync local overlays + seed)
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
+  // Load latest effective games asynchronously on mount
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    fetchEffectiveGames(sb).then((res) => {
+      if (!cancelled) setGames(res);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Verified = a registered user owns this player_name. "(You)" = it's the
   // logged-in viewer's own profile. `canEdit` gates the avatar upload + frame
@@ -256,122 +270,138 @@ export default function ProfilePage({
   // Filter sessions where this player participated and link them to history.
   // `net` here is the *poker* net (cash-out minus buy-in). Food is settled
   // separately via the food-payer (Toby) and never folded into "net".
-  const playerSessions = historicalGames
-    .filter((g) => g.players.some((p) => p.name.toLowerCase() === playerName.toLowerCase()))
-    .map((g) => {
-      const me = g.players.find((p) => p.name.toLowerCase() === playerName.toLowerCase())!;
-      return {
-        id: g.id,
-        date: g.date,
-        buyIn: me.buyIn,
-        cashOut: me.cashOut,
-        food: me.food,
-        net: me.cashOut - me.buyIn,
-      };
-    });
+  const playerSessions = useMemo(() => {
+    return games
+      .filter((g) => g.players.some((p) => p.name.toLowerCase() === playerName.toLowerCase()))
+      .map((g) => {
+        const me = g.players.find((p) => p.name.toLowerCase() === playerName.toLowerCase())!;
+        return {
+          id: g.id,
+          date: g.date,
+          buyIn: me.buyIn,
+          cashOut: me.cashOut,
+          food: me.food,
+          net: me.cashOut - me.buyIn,
+        };
+      });
+  }, [games, playerName]);
 
-  const biggestWin = playerSessions.length > 0 ? Math.max(...playerSessions.map((s) => s.net)) : 0;
-  const biggestLoss = playerSessions.length > 0 ? Math.min(...playerSessions.map((s) => s.net)) : 0;
-  const totalFoodSpend = playerSessions.reduce((sum, s) => sum + s.food, 0);
+  const { biggestWin, biggestLoss, totalFoodSpend, totalNet, winsCount, winRatePct, avgBuyIn } = useMemo(() => {
+    const sessions = playerSessions;
+    const biggestWin = sessions.length > 0 ? Math.max(...sessions.map((s) => s.net)) : 0;
+    const biggestLoss = sessions.length > 0 ? Math.min(...sessions.map((s) => s.net)) : 0;
+    const totalFoodSpend = sessions.reduce((sum, s) => sum + s.food, 0);
+    const totalNet = sessions.reduce((sum, s) => sum + s.net, 0);
+    const winsCount = sessions.filter((s) => s.net >= 0).length;
+    const winRatePct = sessions.length > 0 ? Math.round((winsCount / sessions.length) * 100) : 0;
+    const avgBuyIn = sessions.length > 0 ? sessions.reduce((sum, s) => sum + s.buyIn, 0) / sessions.length : 0;
+    return { biggestWin, biggestLoss, totalFoodSpend, totalNet, winsCount, winRatePct, avgBuyIn };
+  }, [playerSessions]);
 
-  // Derived headline stats
-  const totalNet = playerSessions.reduce((sum, s) => sum + s.net, 0);
-  const winsCount = playerSessions.filter((s) => s.net >= 0).length;
-  const winRatePct = playerSessions.length > 0 ? Math.round((winsCount / playerSessions.length) * 100) : 0;
-  const avgBuyIn = playerSessions.length > 0 ? playerSessions.reduce((sum, s) => sum + s.buyIn, 0) / playerSessions.length : 0;
   const formatNet = (n: number) =>
     `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
 
   // Performance chart — running cumulative net across sessions in chronological
   // order (playerSessions is most-recent-first, so reverse for the line).
-  const performanceData = [...playerSessions].reverse().reduce<{ date: string; profit: number }[]>(
-    (acc, s) => {
-      const last = acc.length > 0 ? acc[acc.length - 1].profit : 0;
-      acc.push({ date: s.date, profit: Number((last + s.net).toFixed(2)) });
-      return acc;
-    },
-    [],
-  );
+  const performanceData = useMemo(() => {
+    return [...playerSessions].reverse().reduce<{ date: string; profit: number }[]>(
+      (acc, s) => {
+        const last = acc.length > 0 ? acc[acc.length - 1].profit : 0;
+        acc.push({ date: s.date, profit: Number((last + s.net).toFixed(2)) });
+        return acc;
+      },
+      [],
+    );
+  }, [playerSessions]);
 
   // Where y=0 sits inside the chart, expressed as a 0..1 offset top-down. Used
   // to split the area + line gradients so segments above zero render green and
   // segments below zero render red. For all-positive data the offset is 1
   // (entire gradient is green); all-negative is 0 (entire gradient is red).
-  const profits = performanceData.length > 0 ? performanceData.map((d) => d.profit) : [0];
-  const dataMax = Math.max(...profits);
-  const dataMin = Math.min(...profits);
-  const fillTop = Math.max(dataMax, 0);
-  const fillBottom = Math.min(dataMin, 0);
-  const fillRange = fillTop - fillBottom;
-  const fillZeroOffset = fillRange > 0 ? fillTop / fillRange : 1;
-  const strokeRange = dataMax - dataMin;
-  const strokeZeroOffset =
-    strokeRange > 0
-      ? Math.max(0, Math.min(1, dataMax / strokeRange))
-      : dataMax >= 0
-        ? 1
-        : 0;
+  const { fillZeroOffset, strokeZeroOffset, dataMax, dataMin } = useMemo(() => {
+    const profits = performanceData.length > 0 ? performanceData.map((d) => d.profit) : [0];
+    const dataMax = Math.max(...profits);
+    const dataMin = Math.min(...profits);
+    const fillTop = Math.max(dataMax, 0);
+    const fillBottom = Math.min(dataMin, 0);
+    const fillRange = fillTop - fillBottom;
+    const fillZeroOffset = fillRange > 0 ? fillTop / fillRange : 1;
+    const strokeRange = dataMax - dataMin;
+    const strokeZeroOffset =
+      strokeRange > 0
+        ? Math.max(0, Math.min(1, dataMax / strokeRange))
+        : dataMax >= 0
+          ? 1
+          : 0;
+    return { fillZeroOffset, strokeZeroOffset, dataMax, dataMin };
+  }, [performanceData]);
 
-  let streakCount = 0;
-  let streakWin = true;
-  for (const s of playerSessions) {
-    if (streakCount === 0) {
-      streakWin = s.net >= 0;
-      streakCount = 1;
-    } else if ((streakWin && s.net >= 0) || (!streakWin && s.net < 0)) {
-      streakCount++;
-    } else {
-      break;
+  const { streakCount, streakWin, longestWinStreak, longestLossStreak } = useMemo(() => {
+    let streakCount = 0;
+    let streakWin = true;
+    for (const s of playerSessions) {
+      if (streakCount === 0) {
+        streakWin = s.net >= 0;
+        streakCount = 1;
+      } else if ((streakWin && s.net >= 0) || (!streakWin && s.net < 0)) {
+        streakCount++;
+      } else {
+        break;
+      }
     }
-  }
 
-  // Longest-ever streaks (separate from the *current* streak above) — for
-  // the Personal Bests section. We walk chronologically (sessions are
-  // recent-first, so reverse) and track the high-water mark on each side.
-  let longestWinStreak = 0;
-  let longestLossStreak = 0;
-  let runWin = 0;
-  let runLoss = 0;
-  for (const s of [...playerSessions].reverse()) {
-    if (s.net >= 0) {
-      runWin += 1;
-      runLoss = 0;
-      if (runWin > longestWinStreak) longestWinStreak = runWin;
-    } else {
-      runLoss += 1;
-      runWin = 0;
-      if (runLoss > longestLossStreak) longestLossStreak = runLoss;
+    let longestWinStreak = 0;
+    let longestLossStreak = 0;
+    let runWin = 0;
+    let runLoss = 0;
+    for (const s of [...playerSessions].reverse()) {
+      if (s.net >= 0) {
+        runWin += 1;
+        runLoss = 0;
+        if (runWin > longestWinStreak) longestWinStreak = runWin;
+      } else {
+        runLoss += 1;
+        runWin = 0;
+        if (runLoss > longestLossStreak) longestLossStreak = runLoss;
+      }
     }
-  }
+    return { streakCount, streakWin, longestWinStreak, longestLossStreak };
+  }, [playerSessions]);
+
   // The session that produced biggestWin / biggestLoss (for date stamps).
-  const biggestWinSession = playerSessions.find((s) => s.net === biggestWin) ?? null;
-  const biggestLossSession = playerSessions.find((s) => s.net === biggestLoss) ?? null;
-  const firstSession = playerSessions[playerSessions.length - 1] ?? null;
-  const mostRecentSession = playerSessions[0] ?? null;
+  const { biggestWinSession, biggestLossSession, firstSession, mostRecentSession } = useMemo(() => {
+    const biggestWinSession = playerSessions.find((s) => s.net === biggestWin) ?? null;
+    const biggestLossSession = playerSessions.find((s) => s.net === biggestLoss) ?? null;
+    const firstSession = playerSessions[playerSessions.length - 1] ?? null;
+    const mostRecentSession = playerSessions[0] ?? null;
+    return { biggestWinSession, biggestLossSession, firstSession, mostRecentSession };
+  }, [playerSessions, biggestWin, biggestLoss]);
 
   // H2H comparison must use the *same* net definition on both sides — the
   // player's `session.net` is `cashOut - buyIn` (food is settled separately
   // by the food-payer), so the opponent's net needs to drop the food term too.
   // Otherwise an opponent who paid for food looks worse than they really were
   // and the W/L tally is biased.
-  const h2h: Record<string, { wins: number; losses: number; draws: number; netVs: number }> = {};
-  playerSessions.forEach((session) => {
-    const fullGame = historicalGames.find((g) => g.id === session.id);
-    if (!fullGame) return;
-    fullGame.players
-      .filter((p) => p.name.toLowerCase() !== playerName.toLowerCase())
-      .forEach((opp) => {
-        const oppNet = opp.cashOut - opp.buyIn;
-        if (!h2h[opp.name]) h2h[opp.name] = { wins: 0, losses: 0, draws: 0, netVs: 0 };
-        if (session.net > oppNet) h2h[opp.name].wins++;
-        else if (session.net < oppNet) h2h[opp.name].losses++;
-        else h2h[opp.name].draws++;
-        h2h[opp.name].netVs += session.net - oppNet;
-      });
-  });
-  const h2hEntries = Object.entries(h2h)
-    .sort((a, b) => (b[1].wins + b[1].losses) - (a[1].wins + a[1].losses))
-    .slice(0, 5);
+  const h2hEntries = useMemo(() => {
+    const h2h: Record<string, { wins: number; losses: number; draws: number; netVs: number }> = {};
+    playerSessions.forEach((session) => {
+      const fullGame = games.find((g) => g.id === session.id);
+      if (!fullGame) return;
+      fullGame.players
+        .filter((p) => p.name.toLowerCase() !== playerName.toLowerCase())
+        .forEach((opp) => {
+          const oppNet = opp.cashOut - opp.buyIn;
+          if (!h2h[opp.name]) h2h[opp.name] = { wins: 0, losses: 0, draws: 0, netVs: 0 };
+          if (session.net > oppNet) h2h[opp.name].wins++;
+          else if (session.net < oppNet) h2h[opp.name].losses++;
+          else h2h[opp.name].draws++;
+          h2h[opp.name].netVs += session.net - oppNet;
+        });
+    });
+    return Object.entries(h2h)
+      .sort((a, b) => (b[1].wins + b[1].losses) - (a[1].wins + a[1].losses))
+      .slice(0, 5);
+  }, [playerSessions, games, playerName]);
 
   return (
     <motion.main
@@ -573,7 +603,7 @@ export default function ProfilePage({
         {/* Running balance tile — only renders for non-admin players with an
             actual outstanding balance. Self-suppresses for the admin and
             for genuinely-clean accounts. */}
-        <PlayerOutstandingBalance playerName={playerName} />
+        <PlayerOutstandingBalance playerName={playerName} games={games} />
 
         {/* Lifetime Performance Chart — collapsible. Stroke + fill flip red
             when the player's cumulative net is below £0 so the colour matches
@@ -704,7 +734,7 @@ export default function ProfilePage({
 
         {/* Achievements grid — always renders so locked badges encourage
             new accounts to keep playing. */}
-        {playerSessions.length > 0 && <AchievementsGrid playerName={playerName} />}
+        {playerSessions.length > 0 && <AchievementsGrid playerName={playerName} games={games} />}
 
         {/* Personal Bests — derived from playerSessions. Self-suppresses
             for accounts with no history so a brand-new signup doesn't see

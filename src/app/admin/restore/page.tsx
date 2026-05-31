@@ -4,6 +4,7 @@ import { ChevronLeft, Undo2, Calendar, AlertTriangle } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdminDb } from "@/lib/auth";
 import { fetchDeletedGameRecords } from "@/lib/soft-delete-db";
+import { fetchSavedGames } from "@/lib/games-db";
 import { historicalGames } from "@/lib/historical-games";
 import RestoreButton from "@/components/RestoreButton";
 
@@ -15,7 +16,11 @@ export default async function AdminRestorePage() {
   const userIsAdmin = await isAdminDb(sb, user?.email);
   if (!userIsAdmin) redirect("/");
 
-  const records = await fetchDeletedGameRecords(sb);
+  const [records, savedGames] = await Promise.all([
+    fetchDeletedGameRecords(sb),
+    fetchSavedGames(sb),
+  ]);
+  
   // Resolve actor names for the "deleted by" column.
   const actorIds = Array.from(
     new Set(records.map((r) => r.deletedBy).filter((id): id is string => Boolean(id))),
@@ -31,10 +36,12 @@ export default async function AdminRestorePage() {
     });
   }
 
+  const allGames = [...savedGames, ...historicalGames];
+
   // For each record, look up the underlying game metadata so the row has
   // a readable label rather than just a hash.
   const decorated = records.map((r) => {
-    const game = historicalGames.find((g) => g.id === r.gameId);
+    const game = allGames.find((g) => g.id === r.gameId);
     return { ...r, game };
   });
 

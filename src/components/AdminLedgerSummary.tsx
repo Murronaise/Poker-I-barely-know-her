@@ -16,7 +16,8 @@ import {
   loadAllSettlements,
   type LedgerEntry,
 } from "@/lib/ledger";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { fetchEffectiveGames } from "@/lib/game-store";
 
 type Totals = {
   owedToYouPence: number;   // total amount players owe admin
@@ -45,7 +46,7 @@ function totalsFromLedger(ledger: Map<string, LedgerEntry>): Totals {
 const formatPence = (p: number) =>
   `£${(p / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function AdminLedgerSummary() {
+export default function AdminLedgerSummary({ games }: { games?: HistoricalGame[] }) {
   // We resolve admin client-side using the email allow-list first, then DB
   // is_admin (matches the pattern in NavBar / games page). The DB query
   // happens off the auth listener so the tile flips on log-in/log-out
@@ -76,9 +77,12 @@ export default function AdminLedgerSummary() {
         setTotals(null);
         return;
       }
-      const settlements = await loadAllSettlements(sb);
+      const [settlements, finalGames] = await Promise.all([
+        loadAllSettlements(sb),
+        games ? Promise.resolve(games) : fetchEffectiveGames(sb),
+      ]);
       if (cancelled) return;
-      const ledger = computeLedger(historicalGames, settlements);
+      const ledger = computeLedger(finalGames, settlements);
       if (cancelled) return;
       setTotals(totalsFromLedger(ledger));
     };
@@ -92,7 +96,7 @@ export default function AdminLedgerSummary() {
       cancelled = true;
       listener?.subscription.unsubscribe();
     };
-  }, []);
+  }, [games]);
 
   if (!show || !totals) return null;
   const { owedToYouPence, youOwePence, owedToYouCount, youOweCount } = totals;

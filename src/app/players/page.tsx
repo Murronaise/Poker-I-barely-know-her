@@ -17,7 +17,8 @@ import Sparkline from "@/components/Sparkline";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useMemo, useState } from "react";
 import { getStoredPlayers, removeStoredPlayer } from "@/lib/local-store";
-import { historicalGames } from "@/lib/historical-games";
+import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { loadRegisteredPlayers, isRegistered, type RegisteredPlayerMap } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -37,11 +38,11 @@ type PlayerRow = {
 // Derive the roster + per-player stats from real game history. Means the
 // leaderboard, profile chart, and roster all stay in sync as new sessions
 // land in historical-games.ts.
-function computeSeedPlayers(): PlayerRow[] {
+function computeSeedPlayers(games: HistoricalGame[]): PlayerRow[] {
   const byName = new Map<string, { date: string; net: number }[]>();
-  // historicalGames is stored most-recent-first; reverse so we walk
+  // games is stored most-recent-first; reverse so we walk
   // chronologically for the running-net trend.
-  [...historicalGames].reverse().forEach((g) => {
+  [...games].reverse().forEach((g) => {
     g.players.forEach((p) => {
       // Poker net only — food is handled via the food settlement, never
       // baked into a player's headline profit.
@@ -109,12 +110,21 @@ function computeLocalPlayers(seed: PlayerRow[]): { rows: PlayerRow[]; avatarMap:
   return { rows, avatarMap };
 }
 
-// Computed once at module load — `historicalGames` is a static import so
-// these never change without a deploy.
-const seedPlayers: PlayerRow[] = computeSeedPlayers();
-
 export default function PlayersIndexPage() {
-  const initialLocal = useMemo(() => computeLocalPlayers(seedPlayers), []);
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    fetchEffectiveGames(sb).then((res) => {
+      if (!cancelled) setGames(res);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const seedPlayers = useMemo(() => computeSeedPlayers(games), [games]);
+
+  const initialLocal = useMemo(() => computeLocalPlayers(computeSeedPlayers(getEffectiveHistoricalGames())), []);
   const [extraPlayers, setExtraPlayers] = useState<PlayerRow[]>(initialLocal.rows);
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>(initialLocal.avatarMap);
 
@@ -189,10 +199,11 @@ export default function PlayersIndexPage() {
       }));
   }, [registered, extraPlayers]);
 
-  const allPlayers = useMemo(
-    () => [...seedPlayers, ...extraPlayers, ...registeredOnly],
-    [extraPlayers, registeredOnly],
-  );
+  const allPlayers = useMemo(() => {
+    const seedNames = new Set(seedPlayers.map((p) => p.name.toLowerCase()));
+    const localRows = extraPlayers.filter((p) => !seedNames.has(p.name.toLowerCase()));
+    return [...seedPlayers, ...localRows, ...registeredOnly];
+  }, [seedPlayers, extraPlayers, registeredOnly]);
 
   const visiblePlayers = useMemo(() => {
     const filtered = allPlayers.filter((p) =>

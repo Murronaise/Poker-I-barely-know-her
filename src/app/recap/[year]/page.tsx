@@ -4,7 +4,8 @@ import {
   ChevronLeft, Trophy, Calendar, Coins, Crown,
   TrendingUp, Pizza, Users, Activity, Zap,
 } from "lucide-react";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { fetchEffectiveGames } from "@/lib/game-store";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -31,11 +32,12 @@ export default async function YearlyRecapPage({
   const year = parseYear(yearParam);
   if (!year) notFound();
 
-  const games = historicalGames.filter((g) => yearOfDate(g.date) === year);
+  const sb = await createSupabaseServerClient();
+  const allGames = await fetchEffectiveGames(sb);
+  const games = allGames.filter((g) => yearOfDate(g.date) === year);
   if (games.length === 0) notFound();
 
   // Avatars for the leaders we end up surfacing.
-  const sb = await createSupabaseServerClient();
   const { data: playerRows } = await sb
     .from("players")
     .select("name, avatar_url");

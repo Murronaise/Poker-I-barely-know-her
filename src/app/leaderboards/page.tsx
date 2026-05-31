@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Trophy, ChevronLeft, Crown, Medal, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import LifetimeProfitChart from "@/components/LifetimeProfitChart";
-import { supabase } from "@/lib/supabase";
+import LifetimeProfitChart, { getDefaultLifetimeChartData } from "@/components/LifetimeProfitChart";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { fetchEffectiveGames } from "@/lib/game-store";
 import {
-  leaderboardCategories,
+  computeLeaderboardCategories,
   leaderboardCategoryOrder,
 } from "@/lib/leaderboard-data";
 
@@ -13,6 +14,10 @@ export default async function LeaderboardsPage({
 }: {
   searchParams: Promise<{ category?: string }>;
 }) {
+  const sb = await createSupabaseServerClient();
+  const allGames = await fetchEffectiveGames(sb);
+  const leaderboardCategories = computeLeaderboardCategories(allGames);
+
   const resolvedParams = await searchParams;
   // Landing defaults to the chart-only "Overall Winners" view; Money
   // Printer and the rest are reachable via the category switcher.
@@ -22,7 +27,7 @@ export default async function LeaderboardsPage({
 
   const avatarMap: Record<string, string> = {};
   try {
-    const { data } = await supabase.from("players").select("name, avatar_url");
+    const { data } = await sb.from("players").select("name, avatar_url");
     if (data) {
       data.forEach((p) => {
         if (p.avatar_url) avatarMap[p.name] = p.avatar_url;
@@ -120,7 +125,7 @@ export default async function LeaderboardsPage({
           <div className="relative h-[320px] md:h-[420px]">
             <div className="h-full overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="h-full md:w-full min-w-[480px] md:min-w-0">
-                <LifetimeProfitChart />
+                <LifetimeProfitChart players={getDefaultLifetimeChartData(allGames)} />
               </div>
             </div>
             <div

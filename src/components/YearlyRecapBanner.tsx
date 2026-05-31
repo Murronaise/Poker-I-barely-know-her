@@ -11,16 +11,16 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
-import { historicalGames } from "@/lib/historical-games";
+import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
 
-export default function YearlyRecapBanner() {
+export default function YearlyRecapBanner({ games = historicalGames }: { games?: HistoricalGame[] }) {
   const target = useMemo<{ year: number; subtitle: string } | null>(() => {
     const now = new Date();
     const thisYear = now.getFullYear();
     const lastYear = thisYear - 1;
 
     const has = (year: number) =>
-      historicalGames.some((g) => {
+      games.some((g) => {
         const d = new Date(g.date);
         return Number.isFinite(d.getTime()) && d.getFullYear() === year;
       });

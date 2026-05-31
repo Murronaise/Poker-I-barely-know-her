@@ -12,6 +12,7 @@ import {
   Sparkles, Crown, Lock,
 } from "lucide-react";
 import { evaluatePlayerAchievements, type EvaluatedAchievement } from "@/lib/achievements";
+import { type HistoricalGame } from "@/lib/historical-games";
 
 const ICONS = {
   Trophy, Swords, Flame, Coins, Wallet, Timer,
@@ -62,8 +63,8 @@ const THEME_TOKENS: Record<
   },
 };
 
-export default function AchievementsGrid({ playerName }: { playerName: string }) {
-  const badges = evaluatePlayerAchievements(playerName);
+export default function AchievementsGrid({ playerName, games }: { playerName: string; games?: HistoricalGame[] }) {
+  const badges = evaluatePlayerAchievements(playerName, games);
   // Sort: unlocked first (newest first), then locked by progress descending.
   const sorted = [...badges].sort((a, b) => {
     if (a.unlocked !== b.unlocked) return a.unlocked ? -1 : 1;

@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { computeLedger, loadAllSettlements } from "@/lib/ledger";
-import { historicalGames } from "@/lib/historical-games";
+import { fetchEffectiveGames } from "@/lib/game-store";
 import { ADMIN_PLAYER } from "@/lib/local-store";
 
 export const dynamic = "force-dynamic";
@@ -55,8 +55,11 @@ async function runReminder() {
   }
 
   const sb = createSupabaseServiceClient();
-  const settlements = await loadAllSettlements(sb);
-  const ledger = computeLedger(historicalGames, settlements);
+  const [settlements, games] = await Promise.all([
+    loadAllSettlements(sb),
+    fetchEffectiveGames(sb),
+  ]);
+  const ledger = computeLedger(games, settlements);
 
   const now = Date.now();
   const thresholdMs = reminderAfterDays * 24 * 60 * 60 * 1000;

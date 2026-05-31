@@ -11,7 +11,8 @@ import {
   validatePlayerName,
   PLAYER_NAME_MAX,
 } from "@/lib/validation";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -24,25 +25,37 @@ export default function SignupPage() {
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
+  // Dynamic state for effective games (initialized to sync local overlays + seed)
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
+  // Load latest effective games asynchronously on mount
+  useEffect(() => {
+    let cancelled = false;
+    fetchEffectiveGames(supabase).then((res) => {
+      if (!cancelled) setGames(res);
+    });
+    return () => { cancelled = true; };
+  }, [supabase]);
+
   // Pre-compute the set of player names that show up in historical games so
   // we can tell the user "we found X sessions for that name" before they
   // commit to the signup.
   const historicalPlayerNames = useMemo(() => {
     const set = new Set<string>();
-    for (const g of historicalGames) {
+    for (const g of games) {
       for (const p of g.players) set.add(p.name.toLowerCase());
     }
     return set;
-  }, []);
+  }, [games]);
 
   const trimmedName = playerName.trim();
   const historicalSessions = useMemo(() => {
     if (!trimmedName) return 0;
     const lower = trimmedName.toLowerCase();
-    return historicalGames.filter((g) =>
+    return games.filter((g) =>
       g.players.some((p) => p.name.toLowerCase() === lower),
     ).length;
-  }, [trimmedName]);
+  }, [trimmedName, games]);
   const nameHasHistory = trimmedName.length >= 2 && historicalPlayerNames.has(trimmedName.toLowerCase());
 
   // If a logged-in user lands here, send them home — signup makes no sense.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,7 +19,8 @@ import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { toast } from "sonner";
 import { getVenue, setVenue, DEFAULT_VENUE, getBlindTemplates, saveBlindTemplate, deleteBlindTemplate, getStoredPlayers, type BlindTemplate } from "@/lib/local-store";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { supabase } from "@/lib/supabase";
 import { loadRegisteredPlayers } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -28,50 +29,49 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 // history. Registered (Supabase users) and locally-added players get merged
 // in on mount inside the component — they have no stats, so the badge
 // renderer just skips them.
-const { seedAvailablePlayers, playerStats } = (() => {
-  const byName = new Map<string, { date: string; net: number; idx: number }[]>();
-  // historicalGames is most-recent-first; preserve idx so we can find the
-  // most recent session per player below.
-  historicalGames.forEach((g, idx) => {
-    g.players.forEach((p) => {
-      const net = p.cashOut - p.buyIn - p.food;
-      if (!byName.has(p.name)) byName.set(p.name, []);
-      byName.get(p.name)!.push({ date: g.date, net, idx });
-    });
-  });
-
-  const stats: Record<string, { winRate: number; lastResult: number | null }> = {};
-  const names: string[] = [];
-  byName.forEach((sessions, name) => {
-    names.push(name);
-    const wins = sessions.filter((s) => s.net >= 0).length;
-    const winRate = Math.round((wins / sessions.length) * 100);
-    // Most recent session is the smallest idx (since list is recent-first).
-    const mostRecent = sessions.reduce((a, b) => (a.idx < b.idx ? a : b));
-    stats[name] = { winRate, lastResult: Number(mostRecent.net.toFixed(2)) };
-  });
-
-  return { seedAvailablePlayers: names.sort(), playerStats: stats };
-})();
-
-const blindPresets = [
-  { sb: 0.10, bb: 0.20, label: "£0.10 / £0.20" },
-  { sb: 0.25, bb: 0.50, label: "£0.25 / £0.50" },
-  { sb: 1, bb: 2, label: "£1 / £2" },
-  { sb: 5, bb: 10, label: "£5 / £10" },
-];
-
-const timerPresets = [10, 15, 20, 30];
-const buyInPresets = [0, 20, 50, 100];
-
 export default function CreateGamePage() {
   const router = useRouter();
+  // Dynamic state for effective games (initialized to sync local overlays + seed)
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
+  // Load latest effective games asynchronously on mount
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    fetchEffectiveGames(sb).then((res) => {
+      if (!cancelled) setGames(res);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Derive playerStats and seedAvailablePlayers from the dynamic games list
+  const { seedAvailablePlayers, playerStats } = useMemo(() => {
+    const byName = new Map<string, { date: string; net: number; idx: number }[]>();
+    games.forEach((g, idx) => {
+      g.players.forEach((p) => {
+        const net = p.cashOut - p.buyIn - p.food;
+        if (!byName.has(p.name)) byName.set(p.name, []);
+        byName.get(p.name)!.push({ date: g.date, net, idx });
+      });
+    });
+
+    const stats: Record<string, { winRate: number; lastResult: number | null }> = {};
+    const names: string[] = [];
+    byName.forEach((sessions, name) => {
+      names.push(name);
+      const wins = sessions.filter((s) => s.net >= 0).length;
+      const winRate = Math.round((wins / sessions.length) * 100);
+      // Most recent session is the smallest idx (since list is recent-first).
+      const mostRecent = sessions.length > 0 ? sessions.reduce((a, b) => (a.idx < b.idx ? a : b)) : null;
+      stats[name] = { winRate, lastResult: mostRecent ? Number(mostRecent.net.toFixed(2)) : null };
+    });
+
+    return { seedAvailablePlayers: names.sort(), playerStats: stats };
+  }, [games]);
+
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
-  // Roster shown in the picker. Starts from session history (SSR-safe) and is
-  // topped up on mount with any registered signups or locally-added players
-  // so brand-new accounts are pickable for their first session.
-  const [availablePlayers, setAvailablePlayers] = useState<string[]>(seedAvailablePlayers);
+  const [extraPlayers, setExtraPlayers] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,27 +79,48 @@ export default function CreateGamePage() {
       const sb = createSupabaseBrowserClient();
       const registered = await loadRegisteredPlayers(sb);
       if (cancelled) return;
-      const seedLower = new Set(seedAvailablePlayers.map((n) => n.toLowerCase()));
-      const merged = [...seedAvailablePlayers];
-      const seenLower = new Set(seedLower);
+      const list: string[] = [];
+      const seen = new Set<string>();
       registered.forEach((displayName, lower) => {
-        if (!seenLower.has(lower)) {
-          merged.push(displayName);
-          seenLower.add(lower);
+        if (!seen.has(lower)) {
+          list.push(displayName);
+          seen.add(lower);
         }
       });
       getStoredPlayers().forEach((p) => {
         const lower = p.name.toLowerCase();
-        if (!seenLower.has(lower)) {
-          merged.push(p.name);
-          seenLower.add(lower);
+        if (!seen.has(lower)) {
+          list.push(p.name);
+          seen.add(lower);
         }
       });
-      merged.sort((a, b) => a.localeCompare(b));
-      setAvailablePlayers(merged);
+      if (!cancelled) setExtraPlayers(list);
     })();
     return () => { cancelled = true; };
   }, []);
+
+  const availablePlayers = useMemo(() => {
+    const merged = [...seedAvailablePlayers];
+    const seenLower = new Set(seedAvailablePlayers.map((n) => n.toLowerCase()));
+    extraPlayers.forEach((name) => {
+      const lower = name.toLowerCase();
+      if (!seenLower.has(lower)) {
+        merged.push(name);
+        seenLower.add(lower);
+      }
+    });
+    return merged.sort((a, b) => a.localeCompare(b));
+  }, [seedAvailablePlayers, extraPlayers]);
+
+  const blindPresets = [
+    { sb: 0.10, bb: 0.20, label: "£0.10 / £0.20" },
+    { sb: 0.25, bb: 0.50, label: "£0.25 / £0.50" },
+    { sb: 1, bb: 2, label: "£1 / £2" },
+    { sb: 5, bb: 10, label: "£5 / £10" },
+  ];
+
+  const timerPresets = [10, 15, 20, 30];
+  const buyInPresets = [0, 20, 50, 100];
 
   // Pull avatar URLs once on mount so the player picker shows real photos
   // instead of the initials fallback. Failures (missing env / offline) silently

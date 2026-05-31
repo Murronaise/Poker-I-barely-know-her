@@ -17,6 +17,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { historicalGames, type HistoricalGame } from "./historical-games";
 import { ADMIN_PLAYER, FOOD_PAYER } from "./local-store";
+import { fetchEffectiveGames } from "./game-store";
+
 
 export type LedgerSessionEntry = {
   gameId: string;
@@ -128,9 +130,11 @@ export function ledgerEntryFor(
  */
 export async function loadLedger(
   client: SupabaseClient,
+  games?: HistoricalGame[],
 ): Promise<Map<string, LedgerEntry>> {
   const settlements = await loadAllSettlements(client);
-  return computeLedger(historicalGames, settlements);
+  const gamesList = games ?? await fetchEffectiveGames(client);
+  return computeLedger(gamesList, settlements);
 }
 
 /**

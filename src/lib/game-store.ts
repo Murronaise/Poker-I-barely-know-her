@@ -5,6 +5,10 @@
 
 import { historicalGames, type HistoricalGame } from "./historical-games";
 import { getDeletedGameIds, getGamePatch } from "./local-store";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchDeletedGameIds } from "./soft-delete-db";
+import { fetchSavedGames } from "./games-db";
+
 
 /**
  * Synchronous version — uses localStorage overlays only. Kept for the
@@ -67,3 +71,23 @@ export function getEffectiveHistoricalGamesWith(
 export function getEffectiveGame(id: string): HistoricalGame | undefined {
   return getEffectiveHistoricalGames().find((g) => g.id === id);
 }
+
+export async function fetchEffectiveGames(
+  supabase: SupabaseClient,
+): Promise<HistoricalGame[]> {
+  try {
+    const [remoteDeleted, savedGames] = await Promise.all([
+      fetchDeletedGameIds(supabase),
+      fetchSavedGames(supabase),
+    ]);
+    const deleted = new Set<string>([
+      ...remoteDeleted,
+      ...(typeof window !== "undefined" ? getDeletedGameIds() : []),
+    ]);
+    return getEffectiveHistoricalGamesWith(deleted, savedGames);
+  } catch (error) {
+    console.error("Error fetching effective games:", error);
+    return getEffectiveHistoricalGames();
+  }
+}
+

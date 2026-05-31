@@ -13,7 +13,7 @@
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { historicalGames } from "@/lib/historical-games";
+import { fetchEffectiveGames } from "@/lib/game-store";
 import { DEFAULT_VENUE } from "@/lib/local-store";
 
 export const dynamic = "force-dynamic";
@@ -151,7 +151,8 @@ export async function GET(): Promise<NextResponse> {
 
   // Historical (already-played) sessions — emitted as all-day events so the
   // calendar shows what happened without claiming a specific time.
-  for (const g of historicalGames) {
+  const games = await fetchEffectiveGames(sb);
+  for (const g of games) {
     const start = dateOnlyToIcs(g.date);
     if (!start) continue;
     lines.push("BEGIN:VEVENT");

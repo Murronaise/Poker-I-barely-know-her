@@ -17,7 +17,7 @@ import {
 } from "recharts";
 import { Coins, TrendingUp } from "lucide-react";
 import { useIsMounted } from "@/lib/use-hydration";
-import { historicalGames } from "@/lib/historical-games";
+import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
 
 export type ChipChartPlayer = {
   name: string;
@@ -92,9 +92,9 @@ type Props = {
  * Build the default dataset — net lifetime profit per player, sorted with
  * the biggest winner on the left.
  */
-function buildDefaultData(): ChipChartPlayer[] {
+export function buildDefaultDataWith(games: HistoricalGame[]): ChipChartPlayer[] {
   const byName = new Map<string, number>();
-  for (const g of historicalGames) {
+  for (const g of games) {
     for (const p of g.players) {
       byName.set(p.name, (byName.get(p.name) ?? 0) + (p.cashOut - p.buyIn));
     }
@@ -102,6 +102,10 @@ function buildDefaultData(): ChipChartPlayer[] {
   return [...byName.entries()]
     .map(([name, net]) => ({ name, profit: Number(net.toFixed(2)) }))
     .sort((a, b) => b.profit - a.profit);
+}
+
+function buildDefaultData(): ChipChartPlayer[] {
+  return buildDefaultDataWith(historicalGames);
 }
 
 export default function LifetimeProfitChart({ players }: Props) {
@@ -204,6 +208,6 @@ export default function LifetimeProfitChart({ players }: Props) {
  * Convenience export — the default dataset used by the dashboard. Exposed
  * so callers don't have to import historicalGames + recompute.
  */
-export function getDefaultLifetimeChartData(): ChipChartPlayer[] {
-  return buildDefaultData();
+export function getDefaultLifetimeChartData(games?: HistoricalGame[]): ChipChartPlayer[] {
+  return games ? buildDefaultDataWith(games) : buildDefaultData();
 }

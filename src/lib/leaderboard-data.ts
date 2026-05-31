@@ -1,3 +1,5 @@
+import { type HistoricalGame } from "./historical-games";
+
 export type LeaderboardRow = {
   rank: number;
   player: string;
@@ -159,3 +161,206 @@ export const leaderboardCategoryOrder: string[] = [
   "the-grinder",
   "the-maniac",
 ];
+
+export function computeLeaderboardCategories(games: HistoricalGame[]): Record<string, LeaderboardCategory> {
+  const byPlayer = new Map<string, { date: string; net: number; buyIn: number; food: number }[]>();
+  // Reverse games so we walk oldest first (chronological order)
+  const chronoGames = [...games].reverse();
+  chronoGames.forEach((g) => {
+    g.players.forEach((p) => {
+      const net = p.cashOut - p.buyIn;
+      const lower = p.name.toLowerCase();
+      if (!byPlayer.has(lower)) byPlayer.set(lower, []);
+      byPlayer.get(lower)!.push({ date: g.date, net, buyIn: p.buyIn, food: p.food });
+    });
+  });
+
+  const playerStats = [...byPlayer.entries()].map(([lower, sessions]) => {
+    // Find the latest casing of the name from the games list
+    let displayName = lower;
+    for (const g of games) {
+      const p = g.players.find(pl => pl.name.toLowerCase() === lower);
+      if (p) {
+        displayName = p.name;
+        break;
+      }
+    }
+
+    const netLifetime = sessions.reduce((sum, s) => sum + s.net, 0);
+    const totalBuyIn = sessions.reduce((sum, s) => sum + s.buyIn, 0);
+    const totalFood = sessions.reduce((sum, s) => sum + s.food, 0);
+    const winSessions = sessions.filter(s => s.net >= 0).length;
+    const winRate = sessions.length > 0 ? (winSessions / sessions.length) * 100 : 0;
+
+    const worstEntry = sessions.reduce((worst, s) => s.net < worst.net ? s : worst, sessions[0]);
+    const bestEntry = sessions.reduce((best, s) => s.net > best.net ? s : best, sessions[0]);
+    const swing = bestEntry.net - worstEntry.net;
+    const lastSessionNet = sessions[sessions.length - 1]?.net ?? 0;
+
+    return {
+      name: displayName,
+      netLifetime,
+      totalBuyIn,
+      totalFood,
+      sessions: sessions.length,
+      winRate,
+      worstSingleNet: worstEntry.net,
+      worstSingleDate: worstEntry.date,
+      bestSingleNet: bestEntry.net,
+      swing,
+      lastSessionNet,
+    };
+  });
+
+  const formatPence = (n: number) =>
+    `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
+
+  // 1. Money Printer (overall-leader)
+  const overallLeaderRows = [...playerStats]
+    .sort((a, b) => b.netLifetime - a.netLifetime)
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: formatPence(p.netLifetime),
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+      trendDirection: (p.lastSessionNet > 0.005 ? "up" : (p.lastSessionNet < -0.005 ? "down" : "flat")) as "up" | "down" | "flat",
+    }));
+
+  // 2. Probably Cheating (the-shark)
+  const sharkRows = [...playerStats]
+    .sort((a, b) => {
+      const diff = b.winRate - a.winRate;
+      if (Math.abs(diff) > 0.001) return diff;
+      return b.netLifetime - a.netLifetime;
+    })
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: `${Math.round(p.winRate)}%`,
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+    }));
+
+  // 3. Mortgage Material (the-whale)
+  const whaleRows = [...playerStats]
+    .sort((a, b) => b.totalBuyIn - a.totalBuyIn)
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: `£${Math.round(p.totalBuyIn).toLocaleString()}`,
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+    }));
+
+  // 4. The Pit (the-tank)
+  const tankRows = [...playerStats]
+    .sort((a, b) => a.worstSingleNet - b.worstSingleNet) // lowest net session first
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: formatPence(p.worstSingleNet),
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+    }));
+
+  // 5. Food Gremlin (the-vacuum)
+  const vacuumRows = [...playerStats]
+    .sort((a, b) => b.totalFood - a.totalFood)
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: `£${p.totalFood.toFixed(2)}`,
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+    }));
+
+  // 6. Part of the Furniture (the-grinder)
+  const grinderRows = [...playerStats]
+    .sort((a, b) => b.sessions - a.sessions)
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: String(p.sessions),
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+    }));
+
+  // 7. Cardiac Episode (the-maniac)
+  const maniacRows = [...playerStats]
+    .sort((a, b) => b.swing - a.swing)
+    .map((p, idx) => ({
+      rank: idx + 1,
+      player: p.name,
+      value: `£${p.swing.toFixed(2)}`,
+      winRate: `${Math.round(p.winRate)}%`,
+      sessions: p.sessions,
+      positive: p.netLifetime >= 0,
+    }));
+
+  return {
+    "overall-winners": {
+      slug: "overall-winners",
+      title: "Overall Winners",
+      subtitle: "Lifetime net profit at a glance.",
+      metricLabel: "Profit",
+      rows: [],
+    },
+    "overall-leader": {
+      slug: "overall-leader",
+      title: "Money Printer",
+      subtitle: "The biggest all-time winner.",
+      metricLabel: "Profit",
+      rows: overallLeaderRows,
+    },
+    "the-shark": {
+      slug: "the-shark",
+      title: "Probably Cheating",
+      subtitle: "Wins so consistently it raises eyebrows.",
+      metricLabel: "Win Rate",
+      rows: sharkRows,
+    },
+    "the-whale": {
+      slug: "the-whale",
+      title: "Mortgage Material",
+      subtitle: "Has pushed the most chips across the table.",
+      metricLabel: "Total Invested",
+      rows: whaleRows,
+    },
+    "the-tank": {
+      slug: "the-tank",
+      title: "The Pit",
+      subtitle: "Took the worst beating in a single night.",
+      metricLabel: "Worst Loss",
+      rows: tankRows,
+    },
+    "the-vacuum": {
+      slug: "the-vacuum",
+      title: "Food Gremlin",
+      subtitle: "Eats more than they play.",
+      metricLabel: "Food Spend",
+      rows: vacuumRows,
+    },
+    "the-grinder": {
+      slug: "the-grinder",
+      title: "Part of the Furniture",
+      subtitle: "Never misses a session — practically lives at the table.",
+      metricLabel: "Sessions",
+      rows: grinderRows,
+    },
+    "the-maniac": {
+      slug: "the-maniac",
+      title: "Cardiac Episode",
+      subtitle: "Wild swings between best and worst nights.",
+      metricLabel: "Max Swing",
+      rows: maniacRows,
+    },
+  };
+}
+

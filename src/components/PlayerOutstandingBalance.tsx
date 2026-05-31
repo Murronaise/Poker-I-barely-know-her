@@ -18,14 +18,17 @@ import {
   formatLedgerPence,
   type LedgerEntry,
 } from "@/lib/ledger";
-import { historicalGames } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
+import { fetchEffectiveGames } from "@/lib/game-store";
 import { ADMIN_PLAYER } from "@/lib/local-store";
 import { Coins, Receipt } from "lucide-react";
 
 export default function PlayerOutstandingBalance({
   playerName,
+  games,
 }: {
   playerName: string;
+  games?: HistoricalGame[];
 }) {
   const [entry, setEntry] = useState<LedgerEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,16 +37,19 @@ export default function PlayerOutstandingBalance({
     let cancelled = false;
     (async () => {
       const sb = createSupabaseBrowserClient();
-      const settlements = await loadAllSettlements(sb);
+      const [settlements, fetchedGames] = await Promise.all([
+        loadAllSettlements(sb),
+        games ? Promise.resolve(games) : fetchEffectiveGames(sb),
+      ]);
       if (cancelled) return;
-      const ledger = computeLedger(historicalGames, settlements);
+      const ledger = computeLedger(fetchedGames, settlements);
       const e = ledgerEntryFor(ledger, playerName);
       if (cancelled) return;
       setEntry(e);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [playerName]);
+  }, [playerName, games]);
 
   // Suppress the tile entirely for the admin profile (no outstanding to
   // surface — they're the hub) and for genuinely-clean players. Loading

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useIsMounted } from "@/lib/use-hydration";
@@ -34,7 +34,8 @@ import PollBanner from "@/components/PollBanner";
 import AdminLedgerSummary from "@/components/AdminLedgerSummary";
 import YearlyRecapBanner from "@/components/YearlyRecapBanner";
 import LifetimeProfitChart from "@/components/LifetimeProfitChart";
-import { historicalGames } from "@/lib/historical-games";
+import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
+import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { getStoredPlayers } from "@/lib/local-store";
 import { loadRegisteredPlayers } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -92,12 +93,12 @@ type PlayerLifetimeStats = {
   swingTrend: number[];
 };
 
-const lifetimeStats: PlayerLifetimeStats[] = (() => {
+function computeLifetimeStats(games: HistoricalGame[]): PlayerLifetimeStats[] {
   type SessionEntry = { date: string; net: number; buyIn: number; food: number };
   const byName = new Map<string, SessionEntry[]>();
-  // Walk chronologically (historicalGames is most-recent-first) so trend
-  // arrays read left → right oldest → newest.
-  [...historicalGames].reverse().forEach((g) => {
+  // Walk chronologically (games list is most-recent-first, reverse so trend
+  // arrays read left → right oldest → newest)
+  [...games].reverse().forEach((g) => {
     g.players.forEach((p) => {
       const net = p.cashOut - p.buyIn;
       if (!byName.has(p.name)) byName.set(p.name, []);
@@ -173,14 +174,8 @@ const lifetimeStats: PlayerLifetimeStats[] = (() => {
       swingTrend: padTrend(swingTrend),
     };
   });
-})();
+}
 
-const formatSigned = (n: number) =>
-  `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
-
-// "Pick top by metric" helper that returns the leader, the runner-up, and a
-// tie flag so the lead-line text can say "tied with X" instead of pretending
-// there's a clear winner.
 function topBy(
   rows: PlayerLifetimeStats[],
   pick: (p: PlayerLifetimeStats) => number,
@@ -200,7 +195,10 @@ function topBy(
   return { leader, runnerUp, tied };
 }
 
-const metrics: MetricCard[] = (() => {
+const formatSigned = (n: number) =>
+  `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
+
+function computeMetrics(lifetimeStats: PlayerLifetimeStats[]): MetricCard[] {
   if (lifetimeStats.length === 0) return [];
 
   // Money Printer — biggest lifetime net.
@@ -341,110 +339,61 @@ const metrics: MetricCard[] = (() => {
       trendPositive: true,
     },
   ];
-})();
-
-// Lifetime poker net per player for the dashboard chart (cash-out minus
-// buy-in, food settled separately). `magnitude` is what Recharts uses for
-// the bar height so every stack grows up from the same £0 baseline;
-// `profit` keeps the sign so the chip shape can colour itself green / red
-// and the tooltip can show the real value. Sorted by profit descending so
-// the biggest winner sits on the left.
-const trueDataArray = lifetimeStats
-  .map((p) => ({
-    name: p.name,
-    profit: p.netLifetime,
-    magnitude: Math.abs(p.netLifetime),
-  }))
-  .sort((a, b) => b.profit - a.profit);
-
-// Derive all headline numbers from `historicalGames` so they stay accurate
-// when sessions are added or removed.
-const totalVolume = historicalGames.reduce((sum, g) => sum + g.totalPot, 0);
-const seedPlayerNamesLower = new Set(
-  historicalGames.flatMap((g) => g.players.map((p) => p.name.toLowerCase())),
-);
-const uniquePlayerCount = seedPlayerNamesLower.size;
-const biggestGame = historicalGames.reduce(
-  (best, g) => (g.totalPot > (best?.totalPot ?? 0) ? g : best),
-  historicalGames[0],
-);
-
-const headlineStats: {
-  label: string;
-  value: string;
-  icon: typeof Activity;
-  color: string;
-  href: string;
-  ariaLabel: string;
-}[] = [
-  {
-    label: "Sessions",
-    value: String(historicalGames.length),
-    icon: Activity,
-    color: "text-[#39FF14]",
-    href: "/games",
-    ariaLabel: `${historicalGames.length} sessions tracked. Open games list.`,
-  },
-  {
-    label: "Total Volume",
-    value: `£${totalVolume.toLocaleString()}`,
-    icon: Coins,
-    color: "text-cyan-400",
-    href: "/stats",
-    ariaLabel: `Total volume £${totalVolume}. Open volume breakdown.`,
-  },
-  {
-    label: "Players",
-    value: String(uniquePlayerCount),
-    icon: Users,
-    color: "text-yellow-400",
-    href: "/players",
-    ariaLabel: `${uniquePlayerCount} players. Open roster.`,
-  },
-  {
-    label: "Biggest Pot",
-    value: `£${biggestGame.totalPot.toLocaleString()}`,
-    icon: TrendingUp,
-    color: "text-[#39FF14]",
-    href: `/games/history/${biggestGame.id}`,
-    ariaLabel: `Biggest pot £${biggestGame.totalPot} on ${biggestGame.date}. Open that session.`,
-  },
-];
-
-const recentSessions = historicalGames.slice(0, 4).map((g) => {
-  const ranked = [...g.players]
-    .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
-    .sort((a, b) => b.net - a.net);
-  const winner = ranked[0];
-  return {
-    id: g.id,
-    date: g.date,
-    duration: g.duration,
-    blinds: g.blinds,
-    pot: g.totalPot,
-    playerCount: g.players.length,
-    winner: { name: winner.name, net: winner.net, cashOut: winner.cashOut, buyIn: winner.buyIn },
-  };
-});
-
-// (ChipStackShape moved into <LifetimeProfitChart> — the dashboard and the
-// leaderboards landing both use the same shared chart component now.)
+}
 
 export default function Dashboard() {
   const router = useRouter();
-  const chartData = trueDataArray;
+
+  // Dynamic state for effective games (initialized to sync local overlays + seed)
+  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
   const [avatarsLoading, setAvatarsLoading] = useState(true);
   const isMounted = useIsMounted();
   const liveGameId = useLiveGameId();
   const reduceMotion = useReducedMotion();
 
+  // Load latest effective games asynchronously on mount
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    fetchEffectiveGames(sb).then((res) => {
+      if (!cancelled) setGames(res);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const lifetimeStats = useMemo(() => computeLifetimeStats(games), [games]);
+  const metrics = useMemo(() => computeMetrics(lifetimeStats), [lifetimeStats]);
+
+  const chartData = useMemo(() => {
+    return lifetimeStats
+      .map((p) => ({
+        name: p.name,
+        profit: p.netLifetime,
+        magnitude: Math.abs(p.netLifetime),
+      }))
+      .sort((a, b) => b.profit - a.profit);
+  }, [lifetimeStats]);
+
+  const totalVolume = useMemo(() => games.reduce((sum, g) => sum + g.totalPot, 0), [games]);
+  const seedPlayerNamesLower = useMemo(() => {
+    return new Set(
+      games.flatMap((g) => g.players.map((p) => p.name.toLowerCase())),
+    );
+  }, [games]);
+  const uniquePlayerCount = useMemo(() => seedPlayerNamesLower.size, [seedPlayerNamesLower]);
+
+  const biggestGame = useMemo(() => {
+    if (games.length === 0) return null;
+    return games.reduce(
+      (best, g) => (g.totalPot > (best?.totalPot ?? 0) ? g : best),
+      games[0],
+    );
+  }, [games]);
+
   // Extra players that exist on /players but aren't in seed history — fresh
-  // signups (Supabase `users` table) and locally-added test accounts. Without
-  // this the headline "Players" tile drifts out of sync with the roster as
-  // soon as someone signs up, since `uniquePlayerCount` is static seed-only.
-  // Initialised to 0 so SSR markup matches the first client render, then
-  // bumped after mount once async data resolves.
+  // signups (Supabase `users` table) and locally-added test accounts.
   const [extraPlayerCount, setExtraPlayerCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -463,8 +412,68 @@ export default function Dashboard() {
       setExtraPlayerCount(extraNames.size);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [seedPlayerNamesLower]);
+
   const totalPlayerCount = uniquePlayerCount + extraPlayerCount;
+
+  const headlineStats = useMemo(() => {
+    const biggest = biggestGame;
+    return [
+      {
+        label: "Sessions",
+        value: String(games.length),
+        icon: Activity,
+        color: "text-[#39FF14]",
+        href: "/games",
+        ariaLabel: `${games.length} sessions tracked. Open games list.`,
+      },
+      {
+        label: "Total Volume",
+        value: `£${totalVolume.toLocaleString()}`,
+        icon: Coins,
+        color: "text-cyan-400",
+        href: "/stats",
+        ariaLabel: `Total volume £${totalVolume}. Open volume breakdown.`,
+      },
+      {
+        label: "Players",
+        value: String(totalPlayerCount),
+        icon: Users,
+        color: "text-yellow-400",
+        href: "/players",
+        ariaLabel: `${totalPlayerCount} players. Open roster.`,
+      },
+      {
+        label: "Biggest Pot",
+        value: biggest ? `£${biggest.totalPot.toLocaleString()}` : "£0",
+        icon: TrendingUp,
+        color: "text-[#39FF14]",
+        href: biggest ? `/games/history/${biggest.id}` : "/games",
+        ariaLabel: biggest
+          ? `Biggest pot £${biggest.totalPot} on ${biggest.date}. Open that session.`
+          : "No sessions",
+      },
+    ];
+  }, [games, totalVolume, totalPlayerCount, biggestGame]);
+
+  const recentSessions = useMemo(() => {
+    return games.slice(0, 4).map((g) => {
+      const ranked = [...g.players]
+        .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
+        .sort((a, b) => b.net - a.net);
+      const winner = ranked[0];
+      return {
+        id: g.id,
+        date: g.date,
+        duration: g.duration,
+        blinds: g.blinds,
+        pot: g.totalPot,
+        playerCount: g.players.length,
+        winner: winner ? { name: winner.name, net: winner.net, cashOut: winner.cashOut, buyIn: winner.buyIn } : null,
+      };
+    });
+  }, [games]);
+
 
   // Coarse-pointer detection so we can swap the desktop CSS-marquee for a
   // native horizontal scroller on phones / tablets. Native scroll lets users
@@ -743,13 +752,13 @@ export default function Dashboard() {
       {/* Admin-only outstanding-balance summary — self-suppresses for
           non-admins and for sessions with nothing pending. */}
       <div className="px-4 md:px-6 xl:px-12 shrink-0">
-        <AdminLedgerSummary />
+        <AdminLedgerSummary games={games} />
       </div>
 
       {/* Yearly recap banner — self-suppresses outside of the windows
           where a recap is meaningful. */}
       <div className="px-4 md:px-6 xl:px-12 shrink-0">
-        <YearlyRecapBanner />
+        <YearlyRecapBanner games={games} />
       </div>
 
       {/* Headline stats */}
@@ -1030,6 +1039,7 @@ export default function Dashboard() {
             aria-busy={avatarsLoading}
           >
             {recentSessions.map((s) => {
+              if (!s.winner) return null;
               const positive = s.winner.net >= 0;
               return (
                 <Link
