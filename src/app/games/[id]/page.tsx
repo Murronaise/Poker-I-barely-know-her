@@ -42,6 +42,9 @@ import {
   preloadGameSounds,
 } from "@/lib/sound-pack";
 import { supabase } from "@/lib/supabase";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { saveFinalizedGame } from "@/lib/games-db";
+import { DEFAULT_VENUE } from "@/lib/local-store";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 
@@ -80,6 +83,7 @@ function ActiveGameContent() {
   const bbQuery = searchParams.get("bb") || "0.20";
   const timerQuery = searchParams.get("timer") || "15";
   const buyInQuery = parseFloat(searchParams.get("buyin") || "0") || 0;
+  const venueQuery = searchParams.get("venue") || "";
 
   const initialMinutes = parseInt(timerQuery, 10);
 
@@ -128,6 +132,35 @@ function ActiveGameContent() {
       { name: "Player B", buyIn: buyInQuery, foodSpend: 0, cashOut: null },
     ];
   });
+
+  // Raw string buffers for the buy-in / food / cash-out inputs, keyed by
+  // `${player}::${field}`. Without this, controlled inputs derive their
+  // value from the numeric state, so typing "2." gets parsed to 2 and
+  // re-rendered as "2" — the trailing "." is wiped before you can type the
+  // pence. The draft holds the literal keystrokes while focused and is
+  // cleared on blur (or when an action like rebuy/bust mutates the field
+  // out from under the user).
+  const [inputDrafts, setInputDrafts] = useState<Record<string, string>>({});
+  const draftKey = (name: string, field: "buyIn" | "foodSpend" | "cashOut") =>
+    `${name}::${field}`;
+  const clearDraft = (name: string, field: "buyIn" | "foodSpend" | "cashOut") => {
+    setInputDrafts((d) => {
+      const k = draftKey(name, field);
+      if (!(k in d)) return d;
+      const { [k]: _, ...rest } = d;
+      return rest;
+    });
+  };
+  const displayMoney = (
+    name: string,
+    field: "buyIn" | "foodSpend" | "cashOut",
+    numeric: number | null
+  ): string => {
+    const draft = inputDrafts[draftKey(name, field)];
+    if (draft !== undefined) return draft;
+    if (numeric === null || numeric === 0) return "";
+    return String(numeric);
+  };
 
   const [showResults, setShowResults] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -375,6 +408,13 @@ function ActiveGameContent() {
   };
 
   const setPlayerInput = (name: string, field: keyof PlayerState, val: string) => {
+    // Preserve the raw keystrokes so "2." and "0.5" survive a re-render.
+    // parseFloat would otherwise strip the trailing "." / leading "0" and
+    // make decimal entry impossible. The draft is committed back to numeric
+    // state on blur via clearDraft + the value parsed below.
+    if (field === "buyIn" || field === "foodSpend" || field === "cashOut") {
+      setInputDrafts((d) => ({ ...d, [draftKey(name, field)]: val }));
+    }
     setPlayers((prev) =>
       prev.map((p) => {
         if (p.name !== name) return p;
@@ -398,6 +438,7 @@ function ActiveGameContent() {
 
   const bustPlayer = (name: string) => {
     setPlayers((prev) => prev.map((p) => (p.name === name ? { ...p, cashOut: 0 } : p)));
+    clearDraft(name, "cashOut");
     playBustSound({ muted: muted() });
     toast(`${name} busted out — cash-out set to £0.`, { icon: "💀" });
     addEvent({ type: "bust", player: name, label: `${name} busted out` });
@@ -405,6 +446,7 @@ function ActiveGameContent() {
 
   const undoBust = (name: string) => {
     setPlayers((prev) => prev.map((p) => (p.name === name ? { ...p, cashOut: null } : p)));
+    clearDraft(name, "cashOut");
     playUndoSound({ muted: muted() });
     // Keep the cashout tracker in sync — undoing a bust resets the
     // input to empty, so the next legitimate cashout should fire a
@@ -419,6 +461,7 @@ function ActiveGameContent() {
         p.name === name ? { ...p, buyIn: Number((p.buyIn + amount).toFixed(2)) } : p
       )
     );
+    clearDraft(name, "buyIn");
     playRebuySound({ muted: muted() });
     addEvent({ type: "rebuy", player: name, amount, label: `${name} rebuyed +£${amount}` });
     // Preset rebuys already log themselves, so the onBlur on the buy-in
@@ -570,7 +613,45 @@ function ActiveGameContent() {
 
     setShowResults(true);
     playFinalizeSound({ muted: muted() });
-    clearLiveGameId();
+
+    // Persist the finalized game to Supabase so it shows up in History.
+    // Run BEFORE clearing the live snapshot — on failure we keep the
+    // sessionStorage state intact so a refresh or "Resume Live Session"
+    // recovers the data and the user can retry End Game. The success
+    // branch is what wipes the snapshot.
+    const browserClient = createSupabaseBrowserClient();
+    const startEvent = events.find((e) => e.type === "start");
+    const startedAt = startEvent ? new Date(startEvent.ts).getTime() : Date.now();
+    const durationMinutes = Math.max(
+      1,
+      Math.round((Date.now() - startedAt) / 60_000),
+    );
+    void (async () => {
+      try {
+        await saveFinalizedGame(browserClient, {
+          id: gameId,
+          playedAt: new Date(),
+          durationMinutes,
+          smallBlind,
+          bigBlind,
+          location: venueQuery || DEFAULT_VENUE,
+          players: players.map((p) => ({
+            name: p.name,
+            buyIn: p.buyIn,
+            cashOut: p.cashOut ?? 0,
+            food: p.foodSpend,
+          })),
+        });
+        clearLiveGameId();
+        toast.success("Game saved to history.");
+      } catch (err) {
+        console.error("[finalize] failed to save game:", err);
+        toast.error(
+          "Couldn't save the game — the live session is still recoverable from the dashboard. Try End Game again.",
+          { duration: 10000 },
+        );
+      }
+    })();
 
     // Fire-and-forget the next monthly poll. The endpoint is idempotent
     // (skip if a poll already exists for the computed boundary pair) and
@@ -670,9 +751,9 @@ function ActiveGameContent() {
                   type="text"
                   inputMode="decimal"
                   pattern="[0-9]*[.,]?[0-9]*"
-                  value={p.buyIn === 0 ? "" : p.buyIn}
+                  value={displayMoney(p.name, "buyIn", p.buyIn)}
                   onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
-                  onBlur={() => commitBuyInChange(p.name)}
+                  onBlur={() => { clearDraft(p.name, "buyIn"); commitBuyInChange(p.name); }}
                   placeholder="0"
                   className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-[#39FF14] focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14] transition-all text-right tabular-nums"
                 />
@@ -688,8 +769,9 @@ function ActiveGameContent() {
                   type="text"
                   inputMode="decimal"
                   pattern="[0-9]*[.,]?[0-9]*"
-                  value={p.foodSpend === 0 ? "" : p.foodSpend}
+                  value={displayMoney(p.name, "foodSpend", p.foodSpend)}
                   onChange={(e) => setPlayerInput(p.name, "foodSpend", e.target.value)}
+                  onBlur={() => clearDraft(p.name, "foodSpend")}
                   placeholder="0"
                   className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-yellow-400 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all text-right tabular-nums"
                 />
@@ -703,9 +785,9 @@ function ActiveGameContent() {
                   type="text"
                   inputMode="decimal"
                   pattern="[0-9]*[.,]?[0-9]*"
-                  value={p.cashOut === null ? "" : p.cashOut}
+                  value={displayMoney(p.name, "cashOut", p.cashOut)}
                   onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
-                  onBlur={() => commitCashOutChange(p.name)}
+                  onBlur={() => { clearDraft(p.name, "cashOut"); commitCashOutChange(p.name); }}
                   placeholder="—"
                   className="w-full bg-black/40 border border-white/10 rounded-md py-2 pl-5 pr-2 font-bold text-base text-white focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all text-right tabular-nums"
                 />
@@ -748,8 +830,13 @@ function ActiveGameContent() {
         </div>
       );
     });
+    // `inputDrafts` matters: the inputs render via displayMoney(), which reads
+    // the draft buffer. A keystroke that changes the draft but not the parsed
+    // number (the "." in "6.", the trailing "0" in "6.30") leaves `players`
+    // untouched, so without this dep the memo wouldn't recompute and the
+    // character would appear to be swallowed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players, chipLeader?.name, stillIn.length]);
+  }, [players, chipLeader?.name, stillIn.length, inputDrafts]);
 
   // ===================== Spreadsheet ROW (memo) =====================
   const tableBody = useMemo(() => {
@@ -799,14 +886,14 @@ function ActiveGameContent() {
                 type="text"
                 inputMode="decimal"
                 pattern="[0-9]*[.,]?[0-9]*"
-                value={p.buyIn === 0 ? "" : p.buyIn}
+                value={displayMoney(p.name, "buyIn", p.buyIn)}
                 onChange={(e) => setPlayerInput(p.name, "buyIn", e.target.value)}
                 // The compiler can't tell that this only runs on blur — false
                 // positive. Identical handler in the mobile-card useMemo is
                 // unflagged. Safe because commitBuyInChange's ref touches all
                 // happen inside the actual blur event.
                 // eslint-disable-next-line react-hooks/refs
-                onBlur={() => commitBuyInChange(p.name)}
+                onBlur={() => { clearDraft(p.name, "buyIn"); commitBuyInChange(p.name); }}
                 placeholder="0"
                 className="w-full bg-black/40 border border-white/10 rounded-md py-1 pl-5 pr-2 font-bold text-base md:text-lg text-[#39FF14] focus:outline-none focus:border-[#39FF14] focus:ring-1 focus:ring-[#39FF14] transition-all text-right tabular-nums"
               />
@@ -845,8 +932,9 @@ function ActiveGameContent() {
                 type="text"
                 inputMode="decimal"
                 pattern="[0-9]*[.,]?[0-9]*"
-                value={p.foodSpend === 0 ? "" : p.foodSpend}
+                value={displayMoney(p.name, "foodSpend", p.foodSpend)}
                 onChange={(e) => setPlayerInput(p.name, "foodSpend", e.target.value)}
+                onBlur={() => clearDraft(p.name, "foodSpend")}
                 placeholder="0"
                 className="w-full bg-black/40 border border-white/10 rounded-md py-1 pl-5 pr-2 font-bold text-base md:text-lg text-yellow-400 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all text-right tabular-nums"
               />
@@ -863,9 +951,9 @@ function ActiveGameContent() {
                 type="text"
                 inputMode="decimal"
                 pattern="[0-9]*[.,]?[0-9]*"
-                value={p.cashOut === null ? "" : p.cashOut}
+                value={displayMoney(p.name, "cashOut", p.cashOut)}
                 onChange={(e) => setPlayerInput(p.name, "cashOut", e.target.value)}
-                onBlur={() => commitCashOutChange(p.name)}
+                onBlur={() => { clearDraft(p.name, "cashOut"); commitCashOutChange(p.name); }}
                 placeholder="—"
                 className="w-full bg-black/40 border border-white/10 rounded-md py-1 pl-5 pr-2 font-bold text-base md:text-lg text-white focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all text-right tabular-nums"
               />
@@ -912,8 +1000,11 @@ function ActiveGameContent() {
         </tr>
       );
     });
+    // `inputDrafts` is required here for the same reason as the mobile cards:
+    // decimal keystrokes that don't move the parsed number must still trigger
+    // a re-render or they get swallowed in the input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players, chipLeader?.name, stillIn.length]);
+  }, [players, chipLeader?.name, stillIn.length, inputDrafts]);
 
   // The "no players" fallback only fires when the URL is empty AND we don't
   // have a restored snapshot — otherwise a hard refresh that loses the
@@ -1014,7 +1105,11 @@ function ActiveGameContent() {
             >
               Back to Table
             </button>
-            <Link href="/" onClick={() => clearLiveGameId()}>
+            {/* The snapshot is cleared on a successful save in
+                calculateResults — if the save failed, we DON'T want to
+                clear here, otherwise the user loses the in-memory data
+                they could otherwise recover via "Resume Live Session". */}
+            <Link href="/">
               <button className="px-6 py-3 bg-[#39FF14]/10 border border-[#39FF14]/40 text-[#39FF14] hover:bg-[#39FF14]/20 transition-colors rounded-xl font-black tracking-widest uppercase shadow-xl text-base">
                 Return to Dashboard
               </button>

@@ -27,11 +27,17 @@ export function getEffectiveHistoricalGames(): HistoricalGame[] {
  * set (merged with the localStorage set in the caller, typically). Keeps
  * this module free of Supabase dependencies so server components can
  * still import it for the bare historicalGames passthrough.
+ *
+ * Optionally accepts a second list of DB-saved games (from the new
+ * `games` table) which are merged in ahead of the hardcoded seed. Newer
+ * sessions appear at the top; the seed array remains as historical
+ * baseline so lifetime totals don't reset.
  */
 export function getEffectiveHistoricalGamesWith(
   deleted: Set<string>,
+  saved: HistoricalGame[] = [],
 ): HistoricalGame[] {
-  return historicalGames
+  const patched = historicalGames
     .filter((g) => !deleted.has(g.id))
     .map((g) => {
       // localStorage patches are still legacy — kept until soft-edit DB
@@ -47,6 +53,15 @@ export function getEffectiveHistoricalGamesWith(
         blinds: (patch.blinds as string) ?? g.blinds,
       };
     });
+
+  // De-dup by id — a saved row wins over the hardcoded seed of the same id
+  // (lets us re-finalize a session and have the new numbers show up).
+  const savedFiltered = saved.filter((g) => !deleted.has(g.id));
+  const savedIds = new Set(savedFiltered.map((g) => g.id));
+  return [
+    ...savedFiltered,
+    ...patched.filter((g) => !savedIds.has(g.id)),
+  ];
 }
 
 export function getEffectiveGame(id: string): HistoricalGame | undefined {

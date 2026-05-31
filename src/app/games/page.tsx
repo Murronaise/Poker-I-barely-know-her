@@ -21,6 +21,7 @@ import { historicalGames } from "@/lib/historical-games";
 import { getEffectiveHistoricalGames, getEffectiveHistoricalGamesWith } from "@/lib/game-store";
 import { getDeletedGameIds } from "@/lib/local-store";
 import { fetchDeletedGameIds } from "@/lib/soft-delete-db";
+import { fetchSavedGames } from "@/lib/games-db";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isAdmin } from "@/lib/auth";
 import { useState, useEffect, useMemo } from "react";
@@ -33,21 +34,25 @@ export default function GamesIndexPage() {
 
   // Load effective games (with localStorage deletes/patches) on mount,
   // then merge in the Supabase-synced deleted set so a delete made on
-  // another device propagates to this one.
+  // another device propagates to this one, plus any DB-saved finalized
+  // sessions from the new `games` table.
   useEffect(() => {
     let cancelled = false;
     // Synchronous first pass — local overlays only, so the list isn't blank
     // while we wait for Supabase.
     setGames(getEffectiveHistoricalGames());
     (async () => {
-      const remoteDeleted = await fetchDeletedGameIds(supabase);
+      const [remoteDeleted, savedGames] = await Promise.all([
+        fetchDeletedGameIds(supabase),
+        fetchSavedGames(supabase),
+      ]);
       if (cancelled) return;
       // Union of local + remote so each surface contributes.
       const merged = new Set<string>([
         ...remoteDeleted,
         ...getDeletedGameIds(),
       ]);
-      setGames(getEffectiveHistoricalGamesWith(merged));
+      setGames(getEffectiveHistoricalGamesWith(merged, savedGames));
     })();
     return () => { cancelled = true; };
   }, [supabase]);

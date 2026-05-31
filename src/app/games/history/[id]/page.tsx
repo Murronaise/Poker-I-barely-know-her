@@ -16,6 +16,7 @@ import HistoryActions from "@/components/HistoryActions";
 import SettlementSettleButton from "@/components/SettlementSettleButton";
 import AdminGameNotes from "@/components/AdminGameNotes";
 import { fetchGameNote } from "@/lib/game-notes-db";
+import { fetchSavedGame } from "@/lib/games-db";
 import { getHistoricalGame } from "@/lib/historical-games";
 import { FOOD_PAYER, ADMIN_PLAYER } from "@/lib/local-store";
 import { supabase } from "@/lib/supabase";
@@ -55,10 +56,13 @@ export default async function HistoricalGamePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const game = getHistoricalGame(id);
-  if (!game) notFound();
-
   const sb = await createSupabaseServerClient();
+  // Hardcoded seed first (cheap, no round-trip); fall back to the DB for
+  // games finalized through the live tracker. The DB write happens on
+  // every finalize, so any session not in the seed array has to come from
+  // here.
+  const game = getHistoricalGame(id) ?? (await fetchSavedGame(sb, id));
+  if (!game) notFound();
   const { data: { user } } = await sb.auth.getUser();
   const userIsAdmin = await isAdminDb(sb, user?.email);
   const settlementRecords = await fetchSettlementRecords(sb, game.id);
