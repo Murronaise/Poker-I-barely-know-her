@@ -10,6 +10,14 @@ import { fetchDeletedGameIds } from "./soft-delete-db";
 import { fetchSavedGames } from "./games-db";
 
 
+let cachedEffectiveGames: HistoricalGame[] | null = null;
+let activeFetchPromise: Promise<HistoricalGame[]> | null = null;
+
+export function clearGameStoreCache(): void {
+  cachedEffectiveGames = null;
+  activeFetchPromise = null;
+}
+
 /**
  * Synchronous version — uses localStorage overlays only. Kept for the
  * places that need a non-async value (initial render before Supabase
@@ -17,6 +25,10 @@ import { fetchSavedGames } from "./games-db";
  * `getEffectiveHistoricalGamesWith()` and pass a fetched deletedSet.
  */
 export function getEffectiveHistoricalGames(): HistoricalGame[] {
+  if (typeof window !== "undefined" && cachedEffectiveGames) {
+    return cachedEffectiveGames;
+  }
+
   // SSR fallback: return hardcoded data if we're on the server.
   if (typeof window === "undefined") {
     return historicalGames;
@@ -74,20 +86,37 @@ export function getEffectiveGame(id: string): HistoricalGame | undefined {
 
 export async function fetchEffectiveGames(
   supabase: SupabaseClient,
+  forceRefresh = false,
 ): Promise<HistoricalGame[]> {
-  try {
-    const [remoteDeleted, savedGames] = await Promise.all([
-      fetchDeletedGameIds(supabase),
-      fetchSavedGames(supabase),
-    ]);
-    const deleted = new Set<string>([
-      ...remoteDeleted,
-      ...(typeof window !== "undefined" ? getDeletedGameIds() : []),
-    ]);
-    return getEffectiveHistoricalGamesWith(deleted, savedGames);
-  } catch (error) {
-    console.error("Error fetching effective games:", error);
-    return getEffectiveHistoricalGames();
+  if (cachedEffectiveGames && !forceRefresh) {
+    return cachedEffectiveGames;
   }
+
+  if (activeFetchPromise && !forceRefresh) {
+    return activeFetchPromise;
+  }
+
+  activeFetchPromise = (async () => {
+    try {
+      const [remoteDeleted, savedGames] = await Promise.all([
+        fetchDeletedGameIds(supabase),
+        fetchSavedGames(supabase),
+      ]);
+      const deleted = new Set<string>([
+        ...remoteDeleted,
+        ...(typeof window !== "undefined" ? getDeletedGameIds() : []),
+      ]);
+      const result = getEffectiveHistoricalGamesWith(deleted, savedGames);
+      cachedEffectiveGames = result;
+      return result;
+    } catch (error) {
+      console.error("Error fetching effective games:", error);
+      return getEffectiveHistoricalGames();
+    } finally {
+      activeFetchPromise = null;
+    }
+  })();
+
+  return activeFetchPromise;
 }
 

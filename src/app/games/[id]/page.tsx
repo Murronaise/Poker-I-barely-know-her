@@ -44,6 +44,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { saveFinalizedGame } from "@/lib/games-db";
+import { clearGameStoreCache } from "@/lib/game-store";
 import { DEFAULT_VENUE } from "@/lib/local-store";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -643,6 +644,7 @@ function ActiveGameContent() {
             food: p.foodSpend,
           })),
         });
+        clearGameStoreCache();
         clearLiveGameId();
         toast.success("Game saved to history.");
       } catch (err) {

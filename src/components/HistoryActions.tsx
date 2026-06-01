@@ -14,6 +14,7 @@ import { onSettlementToggled, emitSettlementToggled } from "@/lib/settlement-eve
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { updateGameAndPlayers } from "@/lib/games-db";
+import { clearGameStoreCache } from "@/lib/game-store";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
 type Props = {
@@ -177,6 +178,7 @@ export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, 
         ...editData,
         players: editPlayers,
       });
+      clearGameStoreCache();
       toast.success("Game details updated successfully!");
       setShowEditModal(false);
       router.refresh();
@@ -195,6 +197,7 @@ export default function HistoryActions({ gameId, isAdmin, game, requiredPayers, 
     deleteGame(gameId);
     try {
       await softDeleteGame(gameId);
+      clearGameStoreCache();
     } catch (err) {
       console.error("[soft-delete] DB write failed", err);
       toast.error("Hidden locally, but the cross-device delete failed — try again or restore from /admin/restore.");

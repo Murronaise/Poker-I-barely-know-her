@@ -14,10 +14,9 @@ import {
 import { motion } from "framer-motion";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import Sparkline from "@/components/Sparkline";
-import { supabase } from "@/lib/supabase";
 import { useEffect, useMemo, useState } from "react";
 import { getStoredPlayers, removeStoredPlayer } from "@/lib/local-store";
-import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
+import { type HistoricalGame } from "@/lib/historical-games";
 import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { loadRegisteredPlayers, isRegistered, type RegisteredPlayerMap } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -113,20 +112,58 @@ function computeLocalPlayers(seed: PlayerRow[]): { rows: PlayerRow[]; avatarMap:
 export default function PlayersIndexPage() {
   const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
 
-  useEffect(() => {
-    let cancelled = false;
-    const sb = createSupabaseBrowserClient();
-    fetchEffectiveGames(sb).then((res) => {
-      if (!cancelled) setGames(res);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const seedPlayers = useMemo(() => computeSeedPlayers(games), [games]);
-
   const initialLocal = useMemo(() => computeLocalPlayers(computeSeedPlayers(getEffectiveHistoricalGames())), []);
   const [extraPlayers, setExtraPlayers] = useState<PlayerRow[]>(initialLocal.rows);
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>(initialLocal.avatarMap);
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [isLoading, setIsLoading] = useState(true);
+  const [registered, setRegistered] = useState<RegisteredPlayerMap>(new Map());
+
+  // Load all required dynamic data (games, registered players, avatars) in a unified mount effect
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+
+    async function loadData() {
+      try {
+        const [gamesRes, registeredMap, avatarsRes] = await Promise.all([
+          fetchEffectiveGames(sb),
+          loadRegisteredPlayers(sb),
+          sb.from("players").select("name, avatar_url")
+        ]);
+
+        if (cancelled) return;
+
+        setGames(gamesRes);
+        setRegistered(registeredMap);
+
+        if (avatarsRes.data) {
+          setAvatarMap((prev) => {
+            const next = { ...prev };
+            avatarsRes.data.forEach((p) => {
+              if (p.avatar_url) next[p.name] = p.avatar_url;
+            });
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error("Error loading roster data:", err);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const seedPlayers = useMemo(() => computeSeedPlayers(games), [games]);
 
   // Remove a locally-stored player (Test/Another etc). Only available for
   // rows with isLocal === true; seed players from historical games can't be
@@ -141,43 +178,6 @@ export default function PlayersIndexPage() {
       return next;
     });
   };
-  const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("name");
-  const [isLoading, setIsLoading] = useState(true);
-  const [registered, setRegistered] = useState<RegisteredPlayerMap>(new Map());
-
-  // Pull the registered (signed-up) player names so we can flag verified
-  // accounts on the roster.
-  useEffect(() => {
-    let cancelled = false;
-    loadRegisteredPlayers(createSupabaseBrowserClient()).then((map) => {
-      if (!cancelled) setRegistered(map);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Pull avatars from Supabase (best-effort) and merge with local ones
-  useEffect(() => {
-    async function fetchAvatars() {
-      try {
-        const { data } = await supabase.from("players").select("name, avatar_url");
-        if (data) {
-          setAvatarMap((prev) => {
-            const next = { ...prev };
-            data.forEach((p) => {
-              if (p.avatar_url) next[p.name] = p.avatar_url;
-            });
-            return next;
-          });
-        }
-      } catch {
-        // ignore
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchAvatars();
-  }, []);
 
   // Synthesize a row for any signed-up account whose player_name isn't already
   // covered by historical games or the local roster. Without this, a brand-new
@@ -197,7 +197,7 @@ export default function PlayersIndexPage() {
         lastPlayed: "Never",
         trend: [0, 0, 0, 0, 0, 0],
       }));
-  }, [registered, extraPlayers]);
+  }, [registered, extraPlayers, seedPlayers]);
 
   const allPlayers = useMemo(() => {
     const seedNames = new Set(seedPlayers.map((p) => p.name.toLowerCase()));

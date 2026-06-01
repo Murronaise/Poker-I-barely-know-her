@@ -15,32 +15,57 @@ export type RegisteredPlayerMap = Map<string, string>;
 // happens.
 const REGISTERED_PLAYERS_LIMIT = 500;
 
+let cachedRegisteredPlayers: RegisteredPlayerMap | null = null;
+let activeFetchPromise: Promise<RegisteredPlayerMap> | null = null;
+
+export function clearRegisteredPlayersCache(): void {
+  cachedRegisteredPlayers = null;
+  activeFetchPromise = null;
+}
+
 export async function loadRegisteredPlayers(
   sb: SupabaseClient,
+  forceRefresh = false,
 ): Promise<RegisteredPlayerMap> {
-  const out = new Map<string, string>();
-  try {
-    const { data, error } = await sb
-      .from("users")
-      .select("player_name")
-      .order("created_at", { ascending: false })
-      .limit(REGISTERED_PLAYERS_LIMIT);
-    if (error) return out;
-    (data ?? []).forEach((row: { player_name: string | null }) => {
-      if (row.player_name) {
-        out.set(row.player_name.toLowerCase(), row.player_name);
-      }
-    });
-    if ((data?.length ?? 0) === REGISTERED_PLAYERS_LIMIT) {
-      console.warn(
-        `[registered-players] Hit the ${REGISTERED_PLAYERS_LIMIT}-row cap — older accounts won't show the verified badge. Consider moving this lookup to a server cache.`,
-      );
-    }
-  } catch {
-    // Table may not exist yet on a fresh deploy — empty map = nothing
-    // verified, which fails safe.
+  if (cachedRegisteredPlayers && !forceRefresh) {
+    return cachedRegisteredPlayers;
   }
-  return out;
+
+  if (activeFetchPromise && !forceRefresh) {
+    return activeFetchPromise;
+  }
+
+  activeFetchPromise = (async () => {
+    const out = new Map<string, string>();
+    try {
+      const { data, error } = await sb
+        .from("users")
+        .select("player_name")
+        .order("created_at", { ascending: false })
+        .limit(REGISTERED_PLAYERS_LIMIT);
+      if (error) return out;
+      (data ?? []).forEach((row: { player_name: string | null }) => {
+        if (row.player_name) {
+          out.set(row.player_name.toLowerCase(), row.player_name);
+        }
+      });
+      if ((data?.length ?? 0) === REGISTERED_PLAYERS_LIMIT) {
+        console.warn(
+          `[registered-players] Hit the ${REGISTERED_PLAYERS_LIMIT}-row cap — older accounts won't show the verified badge. Consider moving this lookup to a server cache.`,
+        );
+      }
+      cachedRegisteredPlayers = out;
+      return out;
+    } catch {
+      // Table may not exist yet on a fresh deploy — empty map = nothing
+      // verified, which fails safe.
+    } finally {
+      activeFetchPromise = null;
+    }
+    return out;
+  })();
+
+  return activeFetchPromise;
 }
 
 export function isRegistered(

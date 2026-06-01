@@ -12,6 +12,7 @@ import { type HistoricalGame } from "@/lib/historical-games";
 import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { normaliseHandle, PROVIDER_LABEL, type PaymentHandles } from "@/lib/payment-links";
+import { clearRegisteredPlayersCache } from "@/lib/registered-players";
 
 type AccountUser = {
   id: string;
@@ -102,6 +103,7 @@ export default function AccountPage() {
             player_name: fallbackName,
             is_admin: false,
           });
+          clearRegisteredPlayersCache();
           setPlayerName(fallbackName);
           setOriginalName(fallbackName);
         } else if (!error && userProfile?.player_name) {
@@ -183,6 +185,7 @@ export default function AccountPage() {
 
       setOriginalName(trimmedName);
       setPlayerName(trimmedName);
+      clearRegisteredPlayersCache();
       setProfileSuccess("Profile updated.");
       emitProfileUpdated();
       setTimeout(() => setProfileSuccess(""), 3000);

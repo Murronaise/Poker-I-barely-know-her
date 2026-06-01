@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Undo2 } from "lucide-react";
 import { restoreGame } from "@/lib/soft-delete-db";
 import { undeleteGame } from "@/lib/local-store";
+import { clearGameStoreCache } from "@/lib/game-store";
 import { toast } from "sonner";
 
 export default function RestoreButton({ gameId }: { gameId: string }) {
@@ -16,6 +17,7 @@ export default function RestoreButton({ gameId }: { gameId: string }) {
     setPending(true);
     try {
       await restoreGame(gameId);
+      clearGameStoreCache();
       // Also clear the local fallback so it doesn't immediately
       // re-shadow the now-restored game on next render.
       undeleteGame(gameId);
