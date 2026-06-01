@@ -6,7 +6,6 @@ import {
   History,
   Calendar,
   Users,
-  CircleDollarSign,
   Activity,
   Clock,
   Coins,
@@ -28,13 +27,24 @@ import { useState, useEffect, useMemo } from "react";
 import { loadAllSettlements, type SettlementsByGame } from "@/lib/ledger";
 import { ADMIN_PLAYER, FOOD_PAYER } from "@/lib/local-store";
 import { formatCurrency } from "@/lib/format";
+import PlayerAvatar from "@/components/PlayerAvatar";
+
+const parseDateParts = (dateStr: string) => {
+  const parts = dateStr.replace(/,/g, "").split(" ");
+  if (parts.length >= 2) {
+    return { month: parts[0], day: parts[1], year: parts[2] };
+  }
+  return { month: "Game", day: "•", year: "" };
+};
 
 export default function GamesIndexPage() {
+
   const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
   const [searchQuery, setSearchQuery] = useState("");
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [settlements, setSettlements] = useState<SettlementsByGame>(new Map());
   const [selectId, setSelectId] = useState<string | null>(null);
+  const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
   const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
@@ -54,10 +64,11 @@ export default function GamesIndexPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [remoteDeleted, savedGames, remoteSettlements] = await Promise.all([
+      const [remoteDeleted, savedGames, remoteSettlements, avatarsRes] = await Promise.all([
         fetchDeletedGameIds(supabase),
         fetchSavedGames(supabase),
         loadAllSettlements(supabase),
+        supabase.from("players").select("name, avatar_url"),
       ]);
       if (cancelled) return;
       // Union of local + remote so each surface contributes.
@@ -67,6 +78,14 @@ export default function GamesIndexPage() {
       ]);
       setGames(getEffectiveHistoricalGamesWith(merged, savedGames));
       setSettlements(remoteSettlements);
+
+      if (avatarsRes?.data) {
+        const map: Record<string, string> = {};
+        avatarsRes.data.forEach((p) => {
+          if (p.avatar_url) map[p.name] = p.avatar_url;
+        });
+        setAvatarMap(map);
+      }
     })();
     return () => { cancelled = true; };
   }, [supabase]);
@@ -276,87 +295,112 @@ export default function GamesIndexPage() {
             const cardHighlight = isSelected
               ? "border-[#22d3ee]/80 shadow-[0_0_30px_rgba(34,211,238,0.25)] ring-2 ring-[#22d3ee]/40 bg-[#22d3ee]/[0.03]"
               : "border-white/5 hover:border-[#39FF14]/30 bg-black/20";
+            const { month, day } = parseDateParts(game.date);
             return (
               <Link
                 key={game.id}
                 id={`game-${game.id}`}
                 href={`/games/history/${game.id}`}
-                className={`group hover:bg-white/5 rounded-xl p-4 border transition-all grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_2fr_1fr] md:items-center gap-3 md:gap-4 ${cardHighlight}`}
+                className={`group rounded-2xl p-4 border transition-all duration-300 flex flex-col md:grid md:grid-cols-[auto_1fr_auto_auto_auto] md:items-center gap-4 ${cardHighlight}`}
               >
-                {/* Date */}
+                {/* Left: Calendar & Details */}
                 <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/50 group-hover:text-[#39FF14] transition-colors border border-white/10 group-hover:border-[#39FF14]/30 shrink-0">
-                    <Calendar size={16} />
+                  {/* Calendar Sheet Widget */}
+                  <div className="w-12 h-14 bg-black/45 border border-white/10 rounded-xl overflow-hidden flex flex-col items-center shrink-0 shadow-lg group-hover:border-[#39FF14]/30 transition-colors">
+                    <span className="w-full text-center text-[9px] font-black tracking-widest uppercase bg-white/5 py-1 text-white/40 border-b border-white/10 group-hover:bg-[#39FF14]/15 group-hover:text-[#39FF14] transition-colors">
+                      {month.slice(0, 3)}
+                    </span>
+                    <span className="text-lg font-black text-white tracking-tighter flex-1 flex items-center justify-center">
+                      {day}
+                    </span>
                   </div>
-                  <div className="min-w-0 flex-1">
+                  
+                  {/* Session Details */}
+                  <div className="min-w-0 flex-1 flex flex-col gap-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-lg font-bold text-white/90 group-hover:text-white truncate">
+                      <h3 className="text-base md:text-lg font-bold text-white group-hover:text-[#39FF14] transition-colors truncate">
                         {game.date}
                       </h3>
                       {unsettledGameIds.has(game.id) && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-red-400/10 border border-red-400/30 text-red-400 tracking-wider uppercase shrink-0">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/30 text-red-400 tracking-wider uppercase shadow-[0_0_12px_rgba(239,68,68,0.1)] shrink-0">
                           Unsettled
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-white/40 truncate">
-                      {game.duration} · {game.blinds}
-                    </p>
+                    <div className="flex items-center gap-2 text-xs text-white/50 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} className="text-white/30 shrink-0" />
+                        {game.duration}
+                      </span>
+                      <span>·</span>
+                      <span className="px-1.5 py-0.5 rounded bg-cyan-400/10 border border-cyan-400/20 text-cyan-300 font-semibold text-[10px]">
+                        {game.blinds}
+                      </span>
+                      {game.location && (
+                        <>
+                          <span>·</span>
+                          <span className="truncate max-w-[120px] sm:max-w-[200px]" title={game.location}>{game.location}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Players & Pot side-by-side on mobile, direct grid elements on desktop */}
-                <div className="grid grid-cols-2 gap-4 md:contents">
+                {/* Middle-Left: Stats (Players & Pot) */}
+                <div className="flex items-center gap-3 bg-black/20 border border-white/5 rounded-xl p-2 self-start md:self-auto shrink-0 w-full sm:w-auto justify-around sm:justify-start">
                   {/* Players */}
-                  <div className="flex items-center gap-2">
-                    <Users size={14} className="text-white/40 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Players</p>
-                      <p className="text-base font-bold text-white/80">{game.players.length}</p>
+                  <div className="px-4 py-0.5 flex flex-col justify-center border-r border-white/5 flex-1 sm:flex-initial">
+                    <span className="text-[9px] text-white/40 uppercase font-black tracking-widest block mb-0.5">Players</span>
+                    <div className="flex items-center gap-1.5">
+                      <Users size={12} className="text-white/40 shrink-0" />
+                      <span className="text-sm font-bold text-white/80">{game.players.length}</span>
                     </div>
                   </div>
-
                   {/* Pot */}
-                  <div className="flex items-center gap-2">
-                    <CircleDollarSign size={14} className="text-[#39FF14]/60 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Pot</p>
-                      <p className="text-base font-bold text-[#39FF14]">{formatCurrency(game.totalPot)}</p>
+                  <div className="px-4 py-0.5 flex flex-col justify-center flex-1 sm:flex-initial">
+                    <span className="text-[9px] text-white/40 uppercase font-black tracking-widest block mb-0.5 font-bold">Total Pot</span>
+                    <div className="flex items-center gap-1.5">
+                      <Coins size={12} className="text-[#39FF14]/60 shrink-0" />
+                      <span className="text-sm font-black text-[#39FF14]">{formatCurrency(game.totalPot)}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Winner — show the player's final stack (`cashOut`) as the
-                    headline number with their net profit underneath. Showing
-                    only the net was confusing readers who expected the chips
-                    they walked away with (e.g. Jake ended on £81.50 with £25
-                    in, but the row used to read "+£56.50" in isolation). */}
-                <div className="flex items-center gap-2 min-w-0">
-                  <Crown size={14} className="text-yellow-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Winner</p>
-                    {winner ? (
-                      <>
-                        <p className="text-base font-bold text-yellow-400 truncate">
-                          {winner.name}{" "}
-                          <span className="text-white/90">{formatCurrency(winner.cashOut)}</span>
+                {/* Middle-Right: Winner Spotlight */}
+                <div className="flex items-center gap-3 bg-yellow-500/5 border border-yellow-500/10 rounded-xl p-2 w-full sm:w-auto shrink-0">
+                  {winner ? (
+                    <>
+                      <div className="relative shrink-0">
+                        <PlayerAvatar
+                          name={winner.name}
+                          avatarUrl={avatarMap[winner.name]}
+                          size={36}
+                          className="rounded-full border border-yellow-500/30"
+                        />
+                        <div className="absolute -top-1.5 -right-1.5 bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded-full p-0.5">
+                          <Crown size={10} className="fill-yellow-400 text-yellow-400" />
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1 sm:flex-initial">
+                        <span className="text-[9px] text-yellow-500/70 uppercase font-black tracking-widest block mb-0.5">Winner</span>
+                        <p className="text-xs font-bold text-white truncate max-w-[140px]">
+                          {winner.name} <span className="text-white/60 font-medium">({formatCurrency(winner.cashOut)})</span>
                         </p>
-                        <p className="text-xs text-[#39FF14] font-bold tabular-nums">
-                          {formatCurrency(winner.net, true)} profit
+                        <p className="text-[10px] text-[#39FF14] font-black tracking-wide">
+                          +{formatCurrency(winner.net)} profit
                         </p>
-                      </>
-                    ) : (
-                      <p className="text-base font-bold text-white/40">No players</p>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-xs font-bold uppercase tracking-widest text-white/30 w-full text-center py-2 px-4">
+                      No players
+                    </div>
+                  )}
                 </div>
 
-                {/* View Details — bumped to min-h-11 so it clears the 44px
-                    tap-target minimum on mobile. The whole card is also a
-                    Link, so this is reinforcement, not the only affordance. */}
-                <div className="flex items-center justify-center gap-2 px-3 py-2.5 min-h-11 rounded-lg bg-white/5 group-hover:bg-[#39FF14]/10 group-hover:text-[#39FF14] text-white/60 text-sm font-bold tracking-widest uppercase transition-colors">
-                  View Details
-                  <ChevronRight size={14} className="opacity-70 shrink-0" />
+                {/* Right: Action arrow (hidden on mobile, visible on desktop) */}
+                <div className="hidden md:flex h-10 w-10 rounded-xl bg-white/5 group-hover:bg-[#39FF14]/15 border border-white/10 group-hover:border-[#39FF14]/30 text-white/50 group-hover:text-[#39FF14] items-center justify-center shrink-0 transition-all duration-300">
+                  <ChevronRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </Link>
             );
