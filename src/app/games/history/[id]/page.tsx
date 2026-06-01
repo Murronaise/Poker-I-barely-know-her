@@ -5,19 +5,11 @@ import {
   Calendar,
   Clock,
   CircleDollarSign,
-  Pizza,
-  ArrowRightSquare,
-  Crown,
   Users,
-  TrendingUp,
-  TrendingDown,
 } from "lucide-react";
-import PlayerAvatar from "@/components/PlayerAvatar";
-import CollapsibleSection from "@/components/CollapsibleSection";
 import HistoryActions from "@/components/HistoryActions";
-import SettlementSettleButton from "@/components/SettlementSettleButton";
 import AdminGameNotes from "@/components/AdminGameNotes";
-import WhatsAppSettlementButton from "@/components/WhatsAppSettlementButton";
+import GameHistoryDetails from "./GameHistoryDetails";
 import { fetchGameNote } from "@/lib/game-notes-db";
 import { fetchSavedGame } from "@/lib/games-db";
 import { getHistoricalGame } from "@/lib/historical-games";
@@ -25,33 +17,11 @@ import { FOOD_PAYER, ADMIN_PLAYER } from "@/lib/local-store";
 import { supabase } from "@/lib/supabase";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdminDb } from "@/lib/auth";
-import { fetchSettlementRecords, type SettlementRecord } from "@/lib/settlements-db";
+import { fetchSettlementRecords } from "@/lib/settlements-db";
 import {
-  activeProviders,
-  buildPaymentLink,
-  getHandlesFor,
   loadPaymentHandlesForPlayers,
-  PROVIDER_LABEL,
-  PROVIDER_ACCENT,
 } from "@/lib/payment-links";
 
-// Cheap relative-time formatter for the "paid 2h ago" subtitle. We don't
-// pull in date-fns or dayjs for this single use; rounding to a coarse unit
-// is good enough.
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "just now";
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 export default async function HistoricalGamePage({
   params,
@@ -70,8 +40,6 @@ export default async function HistoricalGamePage({
   // Set form used by the existing settled-state checks; the Map form is
   // used to render "paid {time} by {who}" alongside each tick.
   const settledPlayers = new Set(settlementRecords.keys());
-  const settlementMetaFor = (playerName: string): SettlementRecord | null =>
-    settlementRecords.get(playerName.toLowerCase()) ?? null;
   // Fetch payment handles for every player on the roster (admin + everyone
   // else, in case the admin → player payout case shows up). The helper
   // tolerates the Phase A migration not being applied yet — it just
@@ -242,330 +210,20 @@ export default async function HistoricalGamePage({
         <AdminGameNotes gameId={game.id} initialNote={adminNote} />
       )}
 
-      {/* Settlement table */}
-      <CollapsibleSection title="Results" icon={<Crown size={18} className="text-yellow-400"/>} defaultOpen={false}>
-        <div className="overflow-hidden flex flex-col">
-          {/* Two layouts: stacked player-card on phones (no horizontal
-              scroll, every number visible per row) and the original 12-col
-              grid table on tablet+. The horizontal-scroll fallback we tried
-              before kept the data accessible but lost the # / Player
-              columns off-screen the moment you panned right — cards keep
-              every stat tied to its player. */}
-
-          {/* ---------- Mobile (< md): compact table ---------- */}
-          <div className="flex flex-col md:hidden">
-            <div className="grid grid-cols-12 gap-2 px-4 py-2 border-b border-white/10 bg-black/20 text-[10px] font-bold text-white/40 uppercase tracking-widest shrink-0">
-              <div className="col-span-6 flex items-center gap-2">Player</div>
-              <div className="col-span-2 text-right">In</div>
-              <div className="col-span-2 text-right">Out</div>
-              <div className="col-span-2 text-right">Net</div>
-            </div>
-            <div className="divide-y divide-white/5">
-              {ranked.map((p, i) => (
-                <Link
-                  key={p.name}
-                  href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
-                  className="grid grid-cols-12 gap-2 px-4 py-2.5 items-center hover:bg-white/5 transition-colors"
-                >
-                  <div className="col-span-6 flex items-center gap-2 min-w-0">
-                    <span className="w-4 font-black text-white/50 text-xs tabular-nums text-center shrink-0">
-                      {i === 0 ? <Crown size={12} className="text-yellow-400 inline" /> : `#${i + 1}`}
-                    </span>
-                    <PlayerAvatar
-                      name={p.name}
-                      avatarUrl={avatarMap[p.name]}
-                      size={28}
-                      className="rounded-full border border-white/10 shrink-0"
-                    />
-                    <span className="font-bold text-xs truncate min-w-0">{p.name}</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-[11px] text-white/60 tabular-nums">£{p.buyIn.toFixed(2)}</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-[11px] text-white/60 tabular-nums">£{p.cashOut.toFixed(2)}</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span
-                      className={`text-[11px] font-black tabular-nums ${
-                        p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
-                      }`}
-                    >
-                      {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* ---------- Tablet+ (md:): original table grid ---------- */}
-          <div className="hidden md:flex md:flex-col">
-            <div className="grid grid-cols-12 gap-3 px-6 py-3 border-b border-white/10 bg-black/40 text-sm font-bold text-white/40 uppercase tracking-wider shrink-0">
-              <div className="col-span-1 text-center">#</div>
-              <div className="col-span-3">Player</div>
-              <div className="col-span-2 text-right">Buy-in</div>
-              <div className="col-span-2 text-right">Cash Out</div>
-              <div className="col-span-2 text-right">Food</div>
-              <div className="col-span-2 text-right text-[#39FF14]">Profit</div>
-            </div>
-            <div className="divide-y divide-white/5">
-              {ranked.map((p, i) => (
-                <Link
-                  key={p.name}
-                  href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
-                  className="grid grid-cols-12 gap-3 px-6 py-3 items-center hover:bg-white/5 transition-colors"
-                >
-                  <div className="col-span-1 text-center font-black text-white/50">
-                    {i === 0 ? <Crown size={16} className="text-yellow-400 inline" /> : `#${i + 1}`}
-                  </div>
-                  <div className="col-span-3 flex items-center gap-3 min-w-0">
-                    <PlayerAvatar
-                      name={p.name}
-                      avatarUrl={avatarMap[p.name]}
-                      size={44}
-                      className="rounded-full border border-white/10 shrink-0"
-                    />
-                    <span className="font-bold text-base lg:text-lg truncate">{p.name}</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-base font-bold text-white/70 tabular-nums">£{p.buyIn.toFixed(2)}</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-base font-bold text-white/70 tabular-nums">£{p.cashOut.toFixed(2)}</span>
-                  </div>
-                  <div className="col-span-2 flex items-center justify-end gap-1">
-                    <Pizza size={11} className="text-yellow-400/60" />
-                    <span className="text-base font-bold text-white/70 tabular-nums">£{p.food.toFixed(2)}</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span
-                      className={`text-lg font-black tabular-nums ${
-                        p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
-                      }`}
-                    >
-                      {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Totals strip — on mobile we stack the totals onto their own row
-              under the "Totals" caption and let them split across the row with
-              justify-between so the values don't crowd each other. From sm up
-              the original inline layout returns. */}
-          <div className="border-t border-white/10 bg-black/40 px-4 md:px-6 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 shrink-0">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/40 shrink-0">
-              <ArrowRightSquare size={11} />
-              Totals
-            </div>
-            <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-6 text-sm w-full sm:w-auto">
-              <span className="text-white/50 truncate">
-                Buy-ins <span className="text-white/80 font-bold tabular-nums">£{totalBuyIn.toFixed(2)}</span>
-              </span>
-              <span className="text-white/50 truncate">
-                Food <span className="text-yellow-400/80 font-bold tabular-nums">£{totalFood.toFixed(2)}</span>
-              </span>
-              <span className="text-white/50 truncate">
-                Pot <span className="text-[#39FF14] font-bold tabular-nums">£{game.totalPot.toFixed(2)}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Settlement" icon={<ArrowRightSquare size={18} className="text-[#39FF14]"/>} defaultOpen={false} className="mt-4">
-        <div className="flex flex-col gap-2">
-          {userIsAdmin && (
-            <div className="flex justify-end mb-2 border-b border-white/5 pb-2">
-              <WhatsAppSettlementButton game={game} />
-            </div>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Incoming (Owed to Admin) */}
-            <div className="flex flex-col gap-3">
-              <h3 className="text-xs font-black tracking-wider uppercase text-red-400 pb-2 border-b border-red-500/10 flex items-center gap-2">
-                <TrendingDown size={14} className="shrink-0" />
-                Incoming (Owed to Admin)
-              </h3>
-              {settlements.length === 0 ? (
-                <p className="text-xs text-white/30 py-4 text-center">No incoming payments pending</p>
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  {settlements.map((s, i) => {
-                    const receiverHandles = getHandlesFor(paymentHandles, s.to);
-                    const providers = activeProviders(receiverHandles);
-                    const meta = settlementMetaFor(s.from);
-                    return (
-                      <div
-                        key={`owe-${i}`}
-                        className="bg-black/40 border border-red-400/20 rounded-xl p-3.5 flex flex-col gap-3"
-                      >
-                        {/* Top Row: Avatar & Debtor Info + Amount */}
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
-                            <div className="min-w-0 flex-1 flex flex-col">
-                              <p className="text-sm font-bold text-white truncate">{s.from}</p>
-                              <p className="text-xs text-red-400/80 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
-                              {meta && (
-                                <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
-                                  Paid {relativeTime(meta.settledAt)}
-                                  {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-xl font-black text-red-400 tabular-nums shrink-0">
-                            £{(s.pence / 100).toFixed(2)}
-                          </p>
-                        </div>
-
-                        {/* Separator line */}
-                        <div className="h-px bg-white/5" />
-
-                        {/* Bottom Row: Breakdown + Settle button */}
-                        <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
-                          <p className="text-xs text-white/50 tabular-nums">
-                            {[
-                              s.buyInPence > 0 ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}` : null,
-                              s.cashOutPence > 0 ? `Cash-out £${(s.cashOutPence / 100).toFixed(2)}` : null,
-                              s.foodPence > 0 ? `Food £${(s.foodPence / 100).toFixed(2)}` : null,
-                            ].filter(Boolean).join(" · ")}
-                          </p>
-                          <div className="shrink-0">
-                            <SettlementSettleButton
-                              gameId={game.id}
-                              playerName={s.from}
-                              isAdmin={userIsAdmin}
-                              initialSettled={settledPlayers.has(s.from.toLowerCase())}
-                            />
-                          </div>
-                        </div>
-
-                        {providers.length > 0 && !meta && (
-                          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
-                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
-                              Pay {s.to}:
-                            </span>
-                            {providers.map((provider) => {
-                              const href = buildPaymentLink(provider, receiverHandles[provider], s.pence);
-                              if (!href) return null;
-                              return (
-                                <a
-                                  key={provider}
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
-                                >
-                                  {PROVIDER_LABEL[provider]}
-                                </a>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Outgoing (Admin Payouts) */}
-            <div className="flex flex-col gap-3">
-              <h3 className="text-xs font-black tracking-wider uppercase text-[#39FF14] pb-2 border-b border-[#39FF14]/10 flex items-center gap-2">
-                <TrendingUp size={14} className="shrink-0" />
-                Outgoing (Admin Payouts)
-              </h3>
-              {payouts.length === 0 ? (
-                <p className="text-xs text-white/30 py-4 text-center">No outgoing payouts pending</p>
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  {payouts.map((p, i) => {
-                    const receiverHandles = getHandlesFor(paymentHandles, p.to);
-                    const providers = activeProviders(receiverHandles);
-                    const meta = settlementMetaFor(p.to);
-                    return (
-                      <div
-                        key={`pay-${i}`}
-                        className="bg-black/40 border border-[#39FF14]/20 rounded-xl p-3.5 flex flex-col gap-3"
-                      >
-                        {/* Top Row: Avatar & Receiver Info + Amount */}
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
-                            <div className="min-w-0 flex-1 flex flex-col">
-                              <p className="text-sm font-bold text-white truncate">{p.to}</p>
-                              <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
-                              {meta && (
-                                <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
-                                  Paid {relativeTime(meta.settledAt)}
-                                  {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-xl font-black text-[#39FF14] tabular-nums shrink-0">
-                            £{(p.pence / 100).toFixed(2)}
-                          </p>
-                        </div>
-
-                        {/* Separator line */}
-                        <div className="h-px bg-white/5" />
-
-                        {/* Bottom Row: Breakdown + Settle button */}
-                        <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
-                          <p className="text-xs text-white/50 tabular-nums">
-                            {[
-                              p.buyInPence > 0 ? `Buy-in £${(p.buyInPence / 100).toFixed(2)}` : null,
-                              p.cashOutPence > 0 ? `Cash-out £${(p.cashOutPence / 100).toFixed(2)}` : null,
-                              p.foodPence > 0 ? `Food £${(p.foodPence / 100).toFixed(2)}` : null,
-                            ].filter(Boolean).join(" · ")}
-                          </p>
-                          <div className="shrink-0">
-                            <SettlementSettleButton
-                              gameId={game.id}
-                              playerName={p.to}
-                              isAdmin={userIsAdmin}
-                              initialSettled={settledPlayers.has(p.to.toLowerCase())}
-                            />
-                          </div>
-                        </div>
-
-                        {providers.length > 0 && !meta && (
-                          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
-                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
-                              Pay {p.to}:
-                            </span>
-                            {providers.map((provider) => {
-                              const href = buildPaymentLink(provider, receiverHandles[provider], p.pence);
-                              if (!href) return null;
-                              return (
-                                <a
-                                  key={provider}
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
-                                >
-                                  {PROVIDER_LABEL[provider]}
-                                </a>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </CollapsibleSection>
+      {/* Tabbed Standing/Results & Payments/Settlements Control */}
+      <GameHistoryDetails
+        game={game}
+        ranked={ranked}
+        avatarMap={avatarMap}
+        settlements={settlements}
+        payouts={payouts}
+        userIsAdmin={userIsAdmin}
+        settledPlayersList={Array.from(settledPlayers)}
+        paymentHandles={paymentHandles}
+        settlementRecordsRaw={Object.fromEntries(settlementRecords)}
+        totalBuyIn={totalBuyIn}
+        totalFood={totalFood}
+      />
     </main>
   );
 }
