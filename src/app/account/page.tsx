@@ -9,7 +9,7 @@ import { validatePlayerName, validatePassword, PLAYER_NAME_MAX } from "@/lib/val
 import { emitProfileUpdated } from "@/lib/profile-events";
 import { profileSlug } from "@/lib/registered-players";
 import { type HistoricalGame } from "@/lib/historical-games";
-import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
+import { getEffectiveHistoricalGames, fetchEffectiveGames, hasGameStoreCache } from "@/lib/game-store";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { normaliseHandle, PROVIDER_LABEL, type PaymentHandles } from "@/lib/payment-links";
 import { clearRegisteredPlayersCache } from "@/lib/registered-players";
@@ -30,14 +30,24 @@ export default function AccountPage() {
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
 
-  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+  const [games, setGames] = useState<HistoricalGame[]>(() =>
+    hasGameStoreCache() ? getEffectiveHistoricalGames() : [],
+  );
+  // Tracks the games fetch independently of the auth `loading` flag above —
+  // the page skeleton clears when auth resolves, which can be before the
+  // games arrive, so the session-count line needs its own gate.
+  const [gamesLoaded, setGamesLoaded] = useState<boolean>(() => hasGameStoreCache());
 
   useEffect(() => {
     let cancelled = false;
     const sb = createSupabaseBrowserClient();
-    fetchEffectiveGames(sb).then((res) => {
-      if (!cancelled) setGames(res);
-    });
+    fetchEffectiveGames(sb)
+      .then((res) => {
+        if (!cancelled) setGames(res);
+      })
+      .finally(() => {
+        if (!cancelled) setGamesLoaded(true);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -384,11 +394,15 @@ export default function AccountPage() {
                 <p className="text-lg md:text-xl font-black tracking-tight group-hover:text-[#39FF14] transition-colors truncate">
                   {originalName || playerName}
                 </p>
-                <p className="text-sm text-white/50">
-                  {sessionCount > 0
-                    ? `${sessionCount} session${sessionCount === 1 ? "" : "s"} on record`
-                    : "No history yet — your stats will appear after your first session"}
-                </p>
+                {gamesLoaded ? (
+                  <p className="text-sm text-white/50">
+                    {sessionCount > 0
+                      ? `${sessionCount} session${sessionCount === 1 ? "" : "s"} on record`
+                      : "No history yet — your stats will appear after your first session"}
+                  </p>
+                ) : (
+                  <span className="mt-1 block h-4 w-44 rounded bg-white/10 animate-pulse" />
+                )}
               </div>
               <ChevronRight size={18} className="text-white/40 group-hover:text-[#39FF14] transition-colors shrink-0" />
             </div>

@@ -277,8 +277,8 @@ export default function PlayersIndexPage() {
           <div className="flex items-center gap-3">
             <Users className="text-[#39FF14]" size={18} />
             <h2 className="text-base md:text-lg font-black tracking-widest uppercase">All Players</h2>
-            <span className="text-xs font-bold tracking-widest uppercase text-white/40 px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-              {visiblePlayers.length}
+            <span className="text-xs font-bold tracking-widest uppercase text-white/40 px-2 py-0.5 rounded-full bg-white/5 border border-white/10 min-w-[1.5rem] text-center">
+              {isLoading ? "…" : visiblePlayers.length}
             </span>
           </div>
 

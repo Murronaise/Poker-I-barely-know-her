@@ -17,7 +17,12 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { type HistoricalGame } from "@/lib/historical-games";
-import { getEffectiveHistoricalGames, getEffectiveHistoricalGamesWith } from "@/lib/game-store";
+import {
+  getEffectiveHistoricalGames,
+  getEffectiveHistoricalGamesWith,
+  hasGameStoreCache,
+  setGameStoreCache,
+} from "@/lib/game-store";
 import { getDeletedGameIds } from "@/lib/local-store";
 import { fetchDeletedGameIds } from "@/lib/soft-delete-db";
 import { fetchSavedGames } from "@/lib/games-db";
@@ -39,7 +44,13 @@ const parseDateParts = (dateStr: string) => {
 
 export default function GamesIndexPage() {
 
-  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+  // Seed from the warm module cache when available (instant, correct on
+  // revisits); otherwise start empty and show a skeleton until the first
+  // Supabase fetch resolves — never paint the stale hardcoded seed.
+  const [games, setGames] = useState<HistoricalGame[]>(() =>
+    hasGameStoreCache() ? getEffectiveHistoricalGames() : [],
+  );
+  const [loaded, setLoaded] = useState<boolean>(() => hasGameStoreCache());
   const [searchQuery, setSearchQuery] = useState("");
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [settlements, setSettlements] = useState<SettlementsByGame>(new Map());
@@ -64,27 +75,35 @@ export default function GamesIndexPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [remoteDeleted, savedGames, remoteSettlements, avatarsRes] = await Promise.all([
-        fetchDeletedGameIds(supabase),
-        fetchSavedGames(supabase),
-        loadAllSettlements(supabase),
-        supabase.from("players").select("name, avatar_url"),
-      ]);
-      if (cancelled) return;
-      // Union of local + remote so each surface contributes.
-      const merged = new Set<string>([
-        ...remoteDeleted,
-        ...getDeletedGameIds(),
-      ]);
-      setGames(getEffectiveHistoricalGamesWith(merged, savedGames));
-      setSettlements(remoteSettlements);
+      try {
+        const [remoteDeleted, savedGames, remoteSettlements, avatarsRes] = await Promise.all([
+          fetchDeletedGameIds(supabase),
+          fetchSavedGames(supabase),
+          loadAllSettlements(supabase),
+          supabase.from("players").select("name, avatar_url"),
+        ]);
+        if (cancelled) return;
+        // Union of local + remote so each surface contributes.
+        const merged = new Set<string>([
+          ...remoteDeleted,
+          ...getDeletedGameIds(),
+        ]);
+        const effective = getEffectiveHistoricalGamesWith(merged, savedGames);
+        setGameStoreCache(effective);
+        setGames(effective);
+        setSettlements(remoteSettlements);
 
-      if (avatarsRes?.data) {
-        const map: Record<string, string> = {};
-        avatarsRes.data.forEach((p) => {
-          if (p.avatar_url) map[p.name] = p.avatar_url;
-        });
-        setAvatarMap(map);
+        if (avatarsRes?.data) {
+          const map: Record<string, string> = {};
+          avatarsRes.data.forEach((p) => {
+            if (p.avatar_url) map[p.name] = p.avatar_url;
+          });
+          setAvatarMap(map);
+        }
+      } finally {
+        // Mark loaded even on error so we swap the skeleton for whatever we
+        // have (cache/empty) rather than pulsing forever.
+        if (!cancelled) setLoaded(true);
       }
     })();
     return () => { cancelled = true; };
@@ -256,7 +275,11 @@ export default function GamesIndexPage() {
               <p className="text-xs font-bold tracking-widest uppercase text-white/40">
                 {s.label}
               </p>
-              <p className="text-lg md:text-xl font-black text-white truncate">{s.value}</p>
+              {loaded ? (
+                <p className="text-lg md:text-xl font-black text-white truncate">{s.value}</p>
+              ) : (
+                <span className="mt-1 block h-5 w-16 rounded bg-white/10 animate-pulse" />
+              )}
             </div>
           </div>
         ))}
@@ -286,7 +309,14 @@ export default function GamesIndexPage() {
         </div>
 
         <div className="md:flex-1 md:min-h-0 md:overflow-auto p-3 md:p-4 grid gap-3">
-          {filteredGames.length > 0 ? (
+          {!loaded ? (
+            [0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="rounded-2xl p-4 border border-white/5 bg-black/20 h-[92px] animate-pulse"
+              />
+            ))
+          ) : filteredGames.length > 0 ? (
             filteredGames.map((game) => {
             const winner = [...game.players]
               .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))

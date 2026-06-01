@@ -38,7 +38,7 @@ import CollapsibleSection from "@/components/CollapsibleSection";
 import { supabase } from "@/lib/supabase";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { type HistoricalGame } from "@/lib/historical-games";
-import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
+import { getEffectiveHistoricalGames, fetchEffectiveGames, hasGameStoreCache } from "@/lib/game-store";
 import { useIsMounted } from "@/lib/use-hydration";
 import { getStoredPlayers } from "@/lib/local-store";
 import { isAdmin } from "@/lib/auth";
@@ -84,16 +84,25 @@ export default function ProfilePage({
   const [posBump, setPosBump] = useState(0); // forces PlayerAvatar to re-read stored position
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Dynamic state for effective games (initialized to sync local overlays + seed)
-  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+  // Dynamic state for effective games. Seed from the warm cache on revisits;
+  // otherwise empty + skeleton until the fetch resolves, so we never paint
+  // seed-derived stats that then snap to the real numbers.
+  const [games, setGames] = useState<HistoricalGame[]>(() =>
+    hasGameStoreCache() ? getEffectiveHistoricalGames() : [],
+  );
+  const [loaded, setLoaded] = useState<boolean>(() => hasGameStoreCache());
 
   // Load latest effective games asynchronously on mount
   useEffect(() => {
     let cancelled = false;
     const sb = createSupabaseBrowserClient();
-    fetchEffectiveGames(sb).then((res) => {
-      if (!cancelled) setGames(res);
-    });
+    fetchEffectiveGames(sb)
+      .then((res) => {
+        if (!cancelled) setGames(res);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -523,7 +532,7 @@ export default function ProfilePage({
             </div>
             <div className="flex items-center gap-2 text-white/50 text-base mt-2 font-semibold">
               <Calendar size={13} className="text-[#39FF14]/70" />
-              <span>{playerSessions.length} sessions tracked</span>
+              <span>{loaded ? playerSessions.length : "…"} sessions tracked</span>
             </div>
             {canEdit && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -576,7 +585,11 @@ export default function ProfilePage({
                 <p className="text-xs font-bold tracking-widest uppercase text-white/40">
                   {m.label}
                 </p>
-                <p className="text-2xl md:text-2xl font-black text-white truncate">{m.value}</p>
+                {loaded ? (
+                  <p className="text-2xl md:text-2xl font-black text-white truncate">{m.value}</p>
+                ) : (
+                  <span className="mt-1 block h-7 w-20 rounded bg-white/10 animate-pulse" />
+                )}
               </div>
             </div>
           ))}

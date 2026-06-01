@@ -19,6 +19,31 @@ export function clearGameStoreCache(): void {
 }
 
 /**
+ * True once the authoritative Supabase-backed games have been fetched at
+ * least once this session (the module cache is warm). Pages use this to
+ * decide their initial render: when warm, seed synchronously from the cache
+ * and skip the loading skeleton; when cold, seed empty and show a skeleton
+ * until the fetch resolves — so the first paint never shows stale seed data.
+ *
+ * Always returns false on the server, which keeps SSR and the cold client
+ * render identical (empty + skeleton) and avoids hydration mismatches.
+ */
+export function hasGameStoreCache(): boolean {
+  return typeof window !== "undefined" && cachedEffectiveGames !== null;
+}
+
+/**
+ * Warm the module cache from a page that computed its effective games
+ * inline (via `getEffectiveHistoricalGamesWith`) rather than through
+ * `fetchEffectiveGames`. Keeps the cache coherent so navigating to another
+ * data page renders instantly from the cache instead of flashing a skeleton.
+ */
+export function setGameStoreCache(games: HistoricalGame[]): void {
+  if (typeof window === "undefined") return;
+  cachedEffectiveGames = games;
+}
+
+/**
  * Synchronous version — uses localStorage overlays only. Kept for the
  * places that need a non-async value (initial render before Supabase
  * resolves). Components that can `await` should prefer

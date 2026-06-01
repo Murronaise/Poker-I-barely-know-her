@@ -27,6 +27,16 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.6",
+    date: "June 1, 2026",
+    summary: "Pages no longer flash old numbers before settling on the right ones",
+    items: [
+      { category: "Polish", type: "fix", text: "Most pages briefly showed stale figures — older session counts, lower lifetime totals, wrong 'Unsettled' badges — before snapping to the correct values a moment after loading. Pages now show a brief loading shimmer and paint the real numbers once, so nothing flickers between wrong and right." },
+      { category: "Polish", type: "improvement", text: "The dashboard's chip-stack chart now drops into place a single time with the real data, instead of animating the seed data and then re-animating after the live numbers arrive." },
+      { category: "Polish", type: "improvement", text: "After the first data page loads, moving between the dashboard, games, stats, players, and profiles renders instantly from a shared in-memory cache — no repeat loading shimmer.", adminOnly: true },
+    ],
+  },
+  {
     version: "1.7.5",
     date: "May 24, 2026",
     summary: "Polls page no longer hangs on skeleton cards; anon visitors get a prompt to log in for upcoming games",

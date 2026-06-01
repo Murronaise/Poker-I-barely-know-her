@@ -28,21 +28,31 @@ import {
 import { useState, useEffect, useMemo } from "react";
 import { useIsMounted } from "@/lib/use-hydration";
 import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
-import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
+import { getEffectiveHistoricalGames, fetchEffectiveGames, hasGameStoreCache } from "@/lib/game-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
 
 export default function StatsPage() {
   const isMounted = useIsMounted();
 
-  const [gamesList, setGamesList] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+  // Seed from the warm cache on revisits; otherwise empty + skeleton until
+  // the fetch resolves. Empty is important here — the highlights row reads
+  // biggestGame.id directly, so we must not render it before real data.
+  const [gamesList, setGamesList] = useState<HistoricalGame[]>(() =>
+    hasGameStoreCache() ? getEffectiveHistoricalGames() : [],
+  );
+  const [loaded, setLoaded] = useState<boolean>(() => hasGameStoreCache());
 
   useEffect(() => {
     let cancelled = false;
     const sb = createSupabaseBrowserClient();
-    fetchEffectiveGames(sb).then((res) => {
-      if (!cancelled) setGamesList(res);
-    });
+    fetchEffectiveGames(sb)
+      .then((res) => {
+        if (!cancelled) setGamesList(res);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -147,6 +157,22 @@ export default function StatsPage() {
           </div>
         </div>
 
+        {!loaded ? (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-xl h-[60px] animate-pulse" />
+              ))}
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl h-[320px] animate-pulse" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white/5 border border-white/10 rounded-2xl h-[104px] animate-pulse" />
+              <div className="bg-white/5 border border-white/10 rounded-2xl h-[104px] animate-pulse" />
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl h-[240px] animate-pulse" />
+          </div>
+        ) : (
+          <>
         {/* Headline metrics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
           {headline.map((m) => (
@@ -364,6 +390,8 @@ export default function StatsPage() {
           <TrendingUp size={12} className="text-[#39FF14]/60" aria-hidden="true" />
           Volume = sum of pot sizes across {sessionCount} sessions.
         </div>
+          </>
+        )}
       </div>
     </motion.main>
   );

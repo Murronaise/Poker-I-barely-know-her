@@ -35,7 +35,7 @@ import AdminLedgerSummary from "@/components/AdminLedgerSummary";
 import YearlyRecapBanner from "@/components/YearlyRecapBanner";
 import LifetimeProfitChart from "@/components/LifetimeProfitChart";
 import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
-import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
+import { getEffectiveHistoricalGames, fetchEffectiveGames, hasGameStoreCache } from "@/lib/game-store";
 import { getStoredPlayers } from "@/lib/local-store";
 import { loadRegisteredPlayers } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -344,8 +344,15 @@ function computeMetrics(lifetimeStats: PlayerLifetimeStats[]): MetricCard[] {
 export default function Dashboard() {
   const router = useRouter();
 
-  // Dynamic state for effective games (initialized to sync local overlays + seed)
-  const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
+  // Dynamic state for effective games. Seed from the warm cache on revisits so
+  // the dashboard renders instantly with correct data; on a cold first load
+  // start empty + skeleton until the fetch resolves, so we never paint the
+  // hardcoded-seed numbers (and the chip chart only drops once, with the real
+  // data, instead of animating the seed and re-animating on the swap).
+  const [games, setGames] = useState<HistoricalGame[]>(() =>
+    hasGameStoreCache() ? getEffectiveHistoricalGames() : [],
+  );
+  const [loaded, setLoaded] = useState<boolean>(() => hasGameStoreCache());
 
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
   const [avatarsLoading, setAvatarsLoading] = useState(true);
@@ -357,9 +364,13 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     const sb = createSupabaseBrowserClient();
-    fetchEffectiveGames(sb).then((res) => {
-      if (!cancelled) setGames(res);
-    });
+    fetchEffectiveGames(sb)
+      .then((res) => {
+        if (!cancelled) setGames(res);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -575,7 +586,10 @@ export default function Dashboard() {
       clearTimeout(timer);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isCoarsePointer]);
+    // `loaded` is a dep so the width re-measures once the marquee mounts with
+    // real metric cards — on a cold load the row is skeleton-only at first
+    // mount, so measuring then would capture a stale (zero) width.
+  }, [isCoarsePointer, loaded]);
 
   // Touch interaction on mobile: pause auto-scroll while the user is panning
   // with their finger and for a short grace period afterwards (so the marquee
@@ -605,7 +619,7 @@ export default function Dashboard() {
       scroller.removeEventListener("touchcancel", resumeSoon);
       if (resumeTimer) clearTimeout(resumeTimer);
     };
-  }, [isCoarsePointer]);
+  }, [isCoarsePointer, loaded]);
 
   const handleMarqueePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isCoarsePointer) return;
@@ -797,9 +811,13 @@ export default function Dashboard() {
                   <p className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-white/40 truncate">
                     {s.label}
                   </p>
-                  <p className="text-lg md:text-xl font-black text-white truncate animate-count-pop">
-                    {displayValue}
-                  </p>
+                  {loaded ? (
+                    <p className="text-lg md:text-xl font-black text-white truncate animate-count-pop">
+                      {displayValue}
+                    </p>
+                  ) : (
+                    <span className="mt-1 block h-6 w-16 rounded bg-white/10 animate-pulse" />
+                  )}
                 </div>
                 <ChevronRight
                   size={14}
@@ -849,7 +867,14 @@ export default function Dashboard() {
                 visually seamless on both desktop transform and mobile
                 scrollLeft. Snap-mandatory was dropped above so it doesn't
                 yank the row back to a card edge while auto-scroll is creeping. */}
-            {[...metrics, ...metrics].map((metric, idx) => (
+            {!loaded
+              ? [0, 1, 2, 3].map((i) => (
+                  <div
+                    key={`marquee-skeleton-${i}`}
+                    className="w-[320px] sm:w-[340px] md:w-[400px] shrink-0 h-[188px] rounded-2xl bg-white/5 border border-white/10 animate-pulse"
+                  />
+                ))
+              : [...metrics, ...metrics].map((metric, idx) => (
               <div
                 key={`${metric.id}-${idx}`}
                 data-marquee-card
@@ -968,7 +993,7 @@ export default function Dashboard() {
                 Lifetime Profit
               </h2>
               <p className="text-sm text-white/40 mt-1">
-                All sessions · {chartData.length} players
+                All sessions · {loaded ? chartData.length : "…"} players
               </p>
             </div>
             <Link
@@ -993,7 +1018,11 @@ export default function Dashboard() {
                   "--mobile-chart-min-width": `${Math.max(chartData.length * 64, 480)}px`
                 } as React.CSSProperties}
               >
-                <LifetimeProfitChart players={chartData} />
+                {loaded ? (
+                  <LifetimeProfitChart players={chartData} />
+                ) : (
+                  <div className="w-full h-full min-h-[240px] rounded-xl bg-white/5 animate-pulse" />
+                )}
               </div>
             </div>
             {/* Right-edge fade — mobile only, hints at horizontal scroll when
@@ -1033,9 +1062,16 @@ export default function Dashboard() {
 
           <div
             className="flex-1 min-h-0 overflow-auto flex flex-col gap-2"
-            aria-busy={avatarsLoading}
+            aria-busy={avatarsLoading || !loaded}
           >
-            {recentSessions.map((s) => {
+            {!loaded
+              ? [0, 1, 2, 3].map((i) => (
+                  <div
+                    key={`recent-skeleton-${i}`}
+                    className="bg-black/20 border border-white/5 rounded-xl h-[124px] animate-pulse"
+                  />
+                ))
+              : recentSessions.map((s) => {
               if (!s.winner) return null;
               const positive = s.winner.net >= 0;
               return (
