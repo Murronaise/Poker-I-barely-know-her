@@ -27,12 +27,15 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createSupabaseBrowserClient();
+
+  const success = searchParams.get("message")
+    ? decodeURIComponent(searchParams.get("message") || "")
+    : "";
 
   // If a logged-in user lands here, send them home rather than show a form
   // they don't need.
@@ -45,13 +48,6 @@ export default function LoginPage() {
       }
     });
   }, [supabase, router]);
-
-  useEffect(() => {
-    const message = searchParams.get("message");
-    if (message) {
-      setSuccess(decodeURIComponent(message));
-    }
-  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

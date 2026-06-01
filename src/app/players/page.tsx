@@ -21,6 +21,7 @@ import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
 import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { loadRegisteredPlayers, isRegistered, type RegisteredPlayerMap } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { formatCurrency } from "@/lib/format";
 
 type PlayerRow = {
   name: string;
@@ -84,8 +85,7 @@ const sortOptions: { key: SortKey; label: string }[] = [
   { key: "sessions", label: "Sessions" },
 ];
 
-const formatProfit = (p: number) =>
-  p >= 0 ? `+£${p.toLocaleString()}` : `-£${Math.abs(p).toLocaleString()}`;
+const formatProfit = (p: number) => formatCurrency(p, true);
 
 function computeLocalPlayers(seed: PlayerRow[]): { rows: PlayerRow[]; avatarMap: Record<string, string> } {
   if (typeof window === "undefined") return { rows: [], avatarMap: {} };
@@ -350,8 +350,14 @@ export default function PlayersIndexPage() {
                       <PlayerAvatar
                         name={player.name}
                         avatarUrl={avatarMap[player.name] ?? player.avatarUrl ?? undefined}
+                        size={80}
+                        className="sm:hidden rounded-full border-2 border-white/10 group-hover:border-[#39FF14]/50 transition-colors shrink-0"
+                      />
+                      <PlayerAvatar
+                        name={player.name}
+                        avatarUrl={avatarMap[player.name] ?? player.avatarUrl ?? undefined}
                         size={100}
-                        className="rounded-full border-2 border-white/10 group-hover:border-[#39FF14]/50 transition-colors shrink-0"
+                        className="hidden sm:block rounded-full border-2 border-white/10 group-hover:border-[#39FF14]/50 transition-colors shrink-0"
                       />
 
                       <div className="flex-1 min-w-0 flex flex-col gap-2">

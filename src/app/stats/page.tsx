@@ -30,6 +30,7 @@ import { useIsMounted } from "@/lib/use-hydration";
 import { historicalGames, type HistoricalGame } from "@/lib/historical-games";
 import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { formatCurrency } from "@/lib/format";
 
 export default function StatsPage() {
   const isMounted = useIsMounted();
@@ -91,25 +92,25 @@ export default function StatsPage() {
   const headline = useMemo(() => [
     {
       label: "Total Volume",
-      value: `£${totalVolume.toLocaleString()}`,
+      value: formatCurrency(totalVolume),
       icon: Coins,
       color: "text-cyan-400",
     },
     {
       label: "Avg Pot",
-      value: `£${avgPot.toFixed(2)}`,
+      value: formatCurrency(avgPot),
       icon: Activity,
       color: "text-[#39FF14]",
     },
     {
       label: "Total Buy-ins",
-      value: `£${totalBuyIns.toLocaleString()}`,
+      value: formatCurrency(totalBuyIns),
       icon: Wallet,
       color: "text-yellow-400",
     },
     {
       label: "Food Spend",
-      value: `£${totalFood.toFixed(2)}`,
+      value: formatCurrency(totalFood),
       icon: Pizza,
       color: "text-orange-400",
     },
@@ -151,16 +152,16 @@ export default function StatsPage() {
           {headline.map((m) => (
             <div
               key={m.label}
-              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center gap-3"
+              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-2 sm:p-3 flex items-center gap-2 sm:gap-3"
             >
-              <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
-                <m.icon className={m.color} size={16} aria-hidden="true" />
+              <div className="p-1.5 sm:p-2 rounded-lg bg-black/30 border border-white/5 shrink-0">
+                <m.icon className={`${m.color} w-3.5 h-3.5 sm:w-4 sm:h-4`} size={16} aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold tracking-widest uppercase text-white/40">
+                <p className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-white/40">
                   {m.label}
                 </p>
-                <p className="text-lg md:text-xl font-black text-white truncate tabular-nums">
+                <p className="text-base sm:text-lg md:text-xl font-black text-white truncate tabular-nums">
                   {m.value}
                 </p>
               </div>
@@ -190,58 +191,66 @@ export default function StatsPage() {
               <ChevronRight size={12} aria-hidden="true" />
             </Link>
           </div>
-          <div className="h-[260px]">
-            {isMounted ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    stroke="#ffffff40"
-                    tick={{ fill: "#ffffff80", fontSize: 13 }}
-                    axisLine={false}
-                    tickLine={false}
-                    dy={8}
-                  />
-                  <YAxis
-                    stroke="#ffffff40"
-                    tick={{ fill: "#ffffff80", fontSize: 13 }}
-                    tickFormatter={(val) => `£${val}`}
-                    axisLine={false}
-                    tickLine={false}
-                    dx={-6}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "rgba(34,211,238,0.08)" }}
-                    contentStyle={{
-                      backgroundColor: "rgba(14,17,23,0.95)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "12px",
-                      backdropFilter: "blur(8px)",
-                      color: "#FAFAFA",
-                    }}
-                    labelStyle={{ color: "#FAFAFA", fontWeight: 700 }}
-                    formatter={(value) => [`£${Number(value).toLocaleString()}`, "Pot"]}
-                  />
-                  <Bar dataKey="pot" radius={[6, 6, 0, 0]}>
-                    {chartData.map((entry) => (
-                      <Cell
-                        key={entry.id}
-                        fill={
-                          entry.id === biggestGame.id
-                            ? "#39FF14"
-                            : "rgba(34,211,238,0.7)"
-                        }
+          <div className="relative h-[260px]">
+            <div className="h-full overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="h-full md:w-full min-w-[480px] md:min-w-0">
+                {isMounted ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        stroke="#ffffff40"
+                        tick={{ fill: "#ffffff80", fontSize: 13 }}
+                        axisLine={false}
+                        tickLine={false}
+                        dy={8}
                       />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-white/20 font-bold">
-                LOADING...
+                      <YAxis
+                        stroke="#ffffff40"
+                        tick={{ fill: "#ffffff80", fontSize: 13 }}
+                        tickFormatter={(val) => `£${val}`}
+                        axisLine={false}
+                        tickLine={false}
+                        dx={-6}
+                      />
+                      <Tooltip
+                        cursor={{ fill: "rgba(34,211,238,0.08)" }}
+                        contentStyle={{
+                          backgroundColor: "rgba(14,17,23,0.95)",
+                          border: "1px solid rgba(255,255,255,0.15)",
+                          borderRadius: "12px",
+                          backdropFilter: "blur(8px)",
+                          color: "#FAFAFA",
+                        }}
+                        labelStyle={{ color: "#FAFAFA", fontWeight: 700 }}
+                        formatter={(value) => [formatCurrency(Number(value)), "Pot"]}
+                      />
+                      <Bar dataKey="pot" radius={[6, 6, 0, 0]}>
+                        {chartData.map((entry) => (
+                          <Cell
+                            key={entry.id}
+                            fill={
+                              entry.id === biggestGame.id
+                                ? "#39FF14"
+                                : "rgba(34,211,238,0.7)"
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white/20 font-bold">
+                    LOADING...
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-0 right-0 h-full w-8 md:hidden bg-gradient-to-l from-[#0E1117] to-transparent"
+            />
           </div>
         </section>
 
@@ -259,7 +268,7 @@ export default function StatsPage() {
                 Biggest Pot
               </p>
               <p className="text-2xl font-black text-[#39FF14] tabular-nums">
-                £{biggestGame.totalPot.toLocaleString()}
+                {formatCurrency(biggestGame.totalPot)}
               </p>
               <p className="text-sm text-white/50 flex items-center gap-1 mt-0.5">
                 <Calendar size={12} className="text-[#39FF14]/60" aria-hidden="true" />
@@ -285,7 +294,7 @@ export default function StatsPage() {
                 Smallest Pot
               </p>
               <p className="text-2xl font-black text-white/80 tabular-nums">
-                £{smallestGame.totalPot.toLocaleString()}
+                {formatCurrency(smallestGame.totalPot)}
               </p>
               <p className="text-sm text-white/50 flex items-center gap-1 mt-0.5">
                 <Calendar size={12} className="text-white/40" aria-hidden="true" />
@@ -338,7 +347,7 @@ export default function StatsPage() {
                       </div>
                     </div>
                     <span className="font-black text-base text-cyan-400 tabular-nums">
-                      £{p.buyIn.toLocaleString()}
+                      {formatCurrency(p.buyIn)}
                     </span>
                     <span className="text-xs font-bold text-white/40 tabular-nums w-10 text-right">
                       {pct}%

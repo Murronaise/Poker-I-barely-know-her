@@ -58,6 +58,15 @@ export default function AccountPage() {
   const [pmError, setPmError] = useState("");
   const [pmSuccess, setPmSuccess] = useState("");
 
+  const lowerName = (originalName || playerName).toLowerCase();
+  const sessionCount = useMemo(() => {
+    if (!lowerName) return 0;
+    return games.filter((g) =>
+      g.players.some((p) => p.name.toLowerCase() === lowerName),
+    ).length;
+  }, [lowerName, games]);
+  const profileHref = lowerName ? `/profile/${profileSlug(originalName || playerName)}` : null;
+
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -325,22 +334,11 @@ export default function AccountPage() {
 
   if (!user) return null;
 
-  // Count historical sessions where the player's name matches (case-insensitive).
-  // The match is implicit: their player_name IS their profile.
-  const lowerName = (originalName || playerName).toLowerCase();
-  const sessionCount = useMemo(() => {
-    if (!lowerName) return 0;
-    return games.filter((g) =>
-      g.players.some((p) => p.name.toLowerCase() === lowerName),
-    ).length;
-  }, [lowerName, games]);
-  const profileHref = lowerName ? `/profile/${profileSlug(originalName || playerName)}` : null;
-
   return (
     <main className="flex-1 flex flex-col md:min-h-0 md:overflow-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-6 w-fit"
+        className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-6 w-fit min-h-11 py-2"
       >
         <ChevronLeft size={18} />
         <span>Back to Dashboard</span>
@@ -631,9 +629,9 @@ export default function AccountPage() {
               <p className="text-xs font-bold text-white/50 uppercase tracking-widest mb-2">Member Since</p>
               <div className="bg-black/40 border border-white/10 rounded-lg px-4 py-3">
                 <span className="text-white/70 font-semibold">
-                  {new Date(user.created_at || Date.now()).toLocaleDateString("en-US", {
+                  {user.created_at ? new Date(user.created_at).toLocaleDateString("en-US", {
                     year: "numeric", month: "long", day: "numeric",
-                  })}
+                  }) : "N/A"}
                 </span>
               </div>
             </div>

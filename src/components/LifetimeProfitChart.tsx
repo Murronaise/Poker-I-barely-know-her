@@ -86,16 +86,20 @@ const ChipStackShape = (props: ChipStackProps) => {
 type Props = {
   /** Override the dataset. Defaults to derived lifetime profit per player. */
   players?: ChipChartPlayer[];
+  /** Dynamic games list to derive dataset from on the client side. */
+  games?: HistoricalGame[];
 };
 
 /**
- * Build the default dataset — net lifetime profit per player, sorted with
+ * Build the default data — net lifetime profit per player, sorted with
  * the biggest winner on the left.
  */
 export function buildDefaultDataWith(games: HistoricalGame[]): ChipChartPlayer[] {
   const byName = new Map<string, number>();
   for (const g of games) {
+    if (!g || !g.players) continue;
     for (const p of g.players) {
+      if (!p || !p.name) continue;
       byName.set(p.name, (byName.get(p.name) ?? 0) + (p.cashOut - p.buyIn));
     }
   }
@@ -108,20 +112,20 @@ function buildDefaultData(): ChipChartPlayer[] {
   return buildDefaultDataWith(historicalGames);
 }
 
-export default function LifetimeProfitChart({ players }: Props) {
+export default function LifetimeProfitChart({ players, games }: Props) {
   const isMounted = useIsMounted();
 
   // Recharts uses `magnitude` for bar height so positive and negative bars
   // both grow up from £0; `profit` keeps the sign so the chip colours and
   // the tooltip read correctly.
   const chartData = useMemo(() => {
-    const source = players ?? buildDefaultData();
+    const source = players ?? (games ? buildDefaultDataWith(games) : buildDefaultData());
     return source.map((p) => ({
       name: p.name,
       profit: p.profit,
       magnitude: Math.abs(p.profit),
     }));
-  }, [players]);
+  }, [players, games]);
 
   if (!isMounted) {
     return (

@@ -20,6 +20,10 @@ const RECENT_FETCH_LIMIT = 5000;
 
 export const dynamic = "force-dynamic";
 
+function getCurrentTimestamp(): number {
+  return Date.now();
+}
+
 export default async function AdminVisitsPage({
   searchParams,
 }: {
@@ -43,18 +47,20 @@ export default async function AdminVisitsPage({
   }
   const rows: SiteVisitRow[] = (rowsRaw ?? []) as SiteVisitRow[];
 
+  const now = getCurrentTimestamp();
+
   if (focusedKey) {
     const visitorRows = rows.filter((r) => r.visitor_key === focusedKey);
     if (visitorRows.length === 0) notFound();
-    return <VisitorDetail focusedKey={focusedKey} visits={visitorRows} />;
+    return <VisitorDetail focusedKey={focusedKey} visits={visitorRows} now={now} />;
   }
 
-  return <VisitorList rows={rows} />;
+  return <VisitorList rows={rows} now={now} />;
 }
 
 // ---------------------------------------------------------------------------
 
-function VisitorList({ rows }: { rows: SiteVisitRow[] }) {
+function VisitorList({ rows, now }: { rows: SiteVisitRow[]; now: number }) {
   // Group by visitor_key, keeping the most-recent identifying info per group.
   type Group = {
     key: string;
@@ -93,7 +99,7 @@ function VisitorList({ rows }: { rows: SiteVisitRow[] }) {
 
   const totalVisits = rows.length;
   const uniqueVisitors = visitors.length;
-  const last24h = rows.filter((r) => Date.now() - new Date(r.visited_at).getTime() < 24 * 3600 * 1000).length;
+  const last24h = rows.filter((r) => now - new Date(r.visited_at).getTime() < 24 * 3600 * 1000).length;
 
   return (
     <main className="flex-1 md:min-h-0 md:overflow-auto bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5">
@@ -152,7 +158,7 @@ function VisitorList({ rows }: { rows: SiteVisitRow[] }) {
                     {v.visitCount}
                   </div>
                   <div className="col-span-4 md:col-span-3 text-right text-xs text-white/60 tabular-nums">
-                    {formatRelative(v.lastSeen)}
+                    {formatRelative(v.lastSeen, now)}
                   </div>
                 </Link>
               ))}
@@ -164,7 +170,7 @@ function VisitorList({ rows }: { rows: SiteVisitRow[] }) {
   );
 }
 
-function VisitorDetail({ focusedKey, visits }: { focusedKey: string; visits: SiteVisitRow[] }) {
+function VisitorDetail({ focusedKey, visits, now }: { focusedKey: string; visits: SiteVisitRow[]; now: number }) {
   const latest = visits[0];
   const oldest = visits[visits.length - 1];
   const playerName = visits.find((v) => v.player_name)?.player_name ?? null;
@@ -200,8 +206,8 @@ function VisitorDetail({ focusedKey, visits }: { focusedKey: string; visits: Sit
 
         <div className="grid grid-cols-3 gap-3 mb-6">
           <Stat icon={Eye} label="Visits" value={visits.length.toLocaleString()} accent="text-cyan-400" />
-          <Stat icon={Clock} label="First Seen" value={formatRelative(oldest.visited_at)} accent="text-yellow-400" />
-          <Stat icon={Clock} label="Last Seen" value={formatRelative(latest.visited_at)} accent="text-[#39FF14]" />
+          <Stat icon={Clock} label="First Seen" value={formatRelative(oldest.visited_at, now)} accent="text-yellow-400" />
+          <Stat icon={Clock} label="Last Seen" value={formatRelative(latest.visited_at, now)} accent="text-[#39FF14]" />
         </div>
 
         {userAgent && (
@@ -284,8 +290,8 @@ function shortenReferer(referer: string): string {
   }
 }
 
-function formatRelative(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
+function formatRelative(iso: string, now: number): string {
+  const ms = now - new Date(iso).getTime();
   if (ms < 60_000) return "just now";
   const min = Math.floor(ms / 60_000);
   if (min < 60) return `${min}m ago`;

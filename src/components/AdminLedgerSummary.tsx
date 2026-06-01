@@ -53,6 +53,7 @@ export default function AdminLedgerSummary({ games }: { games?: HistoricalGame[]
   // without a page reload.
   const [show, setShow] = useState(false);
   const [totals, setTotals] = useState<Totals | null>(null);
+  const [targetGameId, setTargetGameId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +76,7 @@ export default function AdminLedgerSummary({ games }: { games?: HistoricalGame[]
       setShow(admin);
       if (!admin) {
         setTotals(null);
+        setTargetGameId(null);
         return;
       }
       const [settlements, finalGames] = await Promise.all([
@@ -85,6 +87,15 @@ export default function AdminLedgerSummary({ games }: { games?: HistoricalGame[]
       const ledger = computeLedger(finalGames, settlements);
       if (cancelled) return;
       setTotals(totalsFromLedger(ledger));
+
+      const unsettledIds = new Set<string>();
+      ledger.forEach((entry) => {
+        entry.unsettled.forEach((s) => {
+          unsettledIds.add(s.gameId);
+        });
+      });
+      const targetGame = finalGames.find((g) => unsettledIds.has(g.id));
+      setTargetGameId(targetGame?.id ?? null);
     };
 
     sb.auth.getUser().then(({ data }) => refresh(data.user?.email));
@@ -104,7 +115,7 @@ export default function AdminLedgerSummary({ games }: { games?: HistoricalGame[]
 
   return (
     <Link
-      href="/players"
+      href={targetGameId ? `/games/history/${targetGameId}` : "/games"}
       className="block rounded-2xl border border-cyan-400/30 bg-cyan-400/5 hover:border-cyan-400/60 hover:bg-cyan-400/10 backdrop-blur-xl p-4 mb-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
     >
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -114,7 +125,7 @@ export default function AdminLedgerSummary({ games }: { games?: HistoricalGame[]
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-black tracking-widest uppercase text-cyan-400/90">
-              Outstanding across the table
+              Outstanding Settlements
             </p>
             <p className="text-sm text-white/60">
               {owedToYouCount + youOweCount} player{owedToYouCount + youOweCount === 1 ? "" : "s"} with open balances.

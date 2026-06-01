@@ -213,3 +213,97 @@ export async function fetchSavedGame(
     return null;
   }
 }
+
+function parseBlinds(blindsStr: string): { sb: number; bb: number } {
+  const clean = blindsStr.replace(/£/g, "");
+  const parts = clean.split("/").map(p => parseFloat(p.trim()));
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return { sb: parts[0], bb: parts[1] };
+  }
+  const matches = clean.match(/\d+(\.\d+)?/g);
+  if (matches && matches.length >= 2) {
+    return { sb: parseFloat(matches[0]), bb: parseFloat(matches[1]) };
+  }
+  return { sb: 0, bb: 0 };
+}
+
+function parseDate(dateStr: string, fallbackIso?: string): string {
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString();
+  }
+  return fallbackIso || new Date().toISOString();
+}
+
+/**
+ * Edit a game's metadata and its player list. Overwrites/upserts the game row in
+ * Supabase and replaces player rows. Enforces zero-sum rules at the db layer if needed.
+ */
+export async function updateGameAndPlayers(
+  client: SupabaseClient,
+  gameId: string,
+  input: {
+    date: string;
+    duration: string;
+    blinds: string;
+    location: string;
+    players: {
+      name: string;
+      buyIn: number;
+      cashOut: number;
+      food: number;
+    }[];
+  }
+): Promise<void> {
+  const totalPot = input.players.reduce((sum, p) => sum + (p.buyIn || 0), 0);
+  const { sb, bb } = parseBlinds(input.blinds);
+  
+  // Get existing game to check fallback played_at
+  const { data: existingGame } = await client
+    .from(GAMES_TABLE)
+    .select("played_at")
+    .eq("id", gameId)
+    .maybeSingle();
+    
+  const playedAtIso = parseDate(input.date, existingGame?.played_at);
+  const { data: { user } } = await client.auth.getUser();
+
+  const gamePayload = {
+    id: gameId,
+    played_at: playedAtIso,
+    date_label: input.date.trim(),
+    duration_label: input.duration.trim(),
+    blinds_label: input.blinds.trim(),
+    small_blind: sb,
+    big_blind: bb,
+    location: input.location.trim(),
+    total_pot: totalPot,
+    created_by: user?.id ?? null,
+  };
+
+  const { error: gameErr } = await client
+    .from(GAMES_TABLE)
+    .upsert(gamePayload, { onConflict: "id" });
+  if (gameErr) throw gameErr;
+
+  const { error: delErr } = await client
+    .from(PLAYERS_TABLE)
+    .delete()
+    .eq("game_id", gameId);
+  if (delErr) throw delErr;
+
+  if (input.players.length > 0) {
+    const playerPayload = input.players.map((p) => ({
+      game_id: gameId,
+      player_name: p.name,
+      buy_in: p.buyIn,
+      cash_out: p.cashOut,
+      food: p.food,
+    }));
+    const { error: insErr } = await client
+      .from(PLAYERS_TABLE)
+      .insert(playerPayload);
+    if (insErr) throw insErr;
+  }
+}
+

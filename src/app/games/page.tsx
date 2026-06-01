@@ -25,12 +25,27 @@ import { fetchSavedGames } from "@/lib/games-db";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isAdmin } from "@/lib/auth";
 import { useState, useEffect, useMemo } from "react";
+import { loadAllSettlements, type SettlementsByGame } from "@/lib/ledger";
+import { ADMIN_PLAYER, FOOD_PAYER } from "@/lib/local-store";
+import { formatCurrency } from "@/lib/format";
 
 export default function GamesIndexPage() {
   const [games, setGames] = useState<HistoricalGame[]>(() => getEffectiveHistoricalGames());
   const [searchQuery, setSearchQuery] = useState("");
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [settlements, setSettlements] = useState<SettlementsByGame>(new Map());
+  const [selectId, setSelectId] = useState<string | null>(null);
   const supabase = createSupabaseBrowserClient();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const selId = params.get("select");
+      if (selId) {
+        setTimeout(() => setSelectId(selId), 0);
+      }
+    }
+  }, []);
 
   // Load effective games (with localStorage deletes/patches) on mount,
   // then merge in the Supabase-synced deleted set so a delete made on
@@ -38,13 +53,11 @@ export default function GamesIndexPage() {
   // sessions from the new `games` table.
   useEffect(() => {
     let cancelled = false;
-    // Synchronous first pass — local overlays only, so the list isn't blank
-    // while we wait for Supabase.
-    setGames(getEffectiveHistoricalGames());
     (async () => {
-      const [remoteDeleted, savedGames] = await Promise.all([
+      const [remoteDeleted, savedGames, remoteSettlements] = await Promise.all([
         fetchDeletedGameIds(supabase),
         fetchSavedGames(supabase),
+        loadAllSettlements(supabase),
       ]);
       if (cancelled) return;
       // Union of local + remote so each surface contributes.
@@ -53,6 +66,7 @@ export default function GamesIndexPage() {
         ...getDeletedGameIds(),
       ]);
       setGames(getEffectiveHistoricalGamesWith(merged, savedGames));
+      setSettlements(remoteSettlements);
     })();
     return () => { cancelled = true; };
   }, [supabase]);
@@ -91,11 +105,46 @@ export default function GamesIndexPage() {
     };
   }, [supabase]);
 
+  const unsettledGameIds = useMemo(() => {
+    const unsettled = new Set<string>();
+    const adminLower = ADMIN_PLAYER.toLowerCase();
+    const foodPayerLower = FOOD_PAYER.toLowerCase();
+
+    games.forEach((g) => {
+      const settledKeys = settlements.get(g.id) ?? new Set<string>();
+      const hasUnsettled = g.players.some((p) => {
+        const key = p.name.toLowerCase();
+        if (key === adminLower) return false;
+        if (settledKeys.has(key)) return false;
+        const pokerNet = p.cashOut - p.buyIn;
+        const foodOwed = key === foodPayerLower ? 0 : p.food;
+        const combined = pokerNet - foodOwed;
+        return Math.abs(combined) >= 0.005;
+      });
+      if (hasUnsettled) {
+        unsettled.add(g.id);
+      }
+    });
+    return unsettled;
+  }, [games, settlements]);
+
+  useEffect(() => {
+    if (selectId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`game-${selectId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [selectId]);
+
   const summary = useMemo(() => [
     { label: "Total Sessions", value: String(games.length), icon: Activity, color: "text-[#39FF14]" },
     {
       label: "Lifetime Pot",
-      value: `£${games.reduce((sum, g) => sum + g.totalPot, 0).toLocaleString()}`,
+      value: formatCurrency(games.reduce((sum, g) => sum + g.totalPot, 0)),
       icon: Coins,
       color: "text-cyan-400",
     },
@@ -223,42 +272,57 @@ export default function GamesIndexPage() {
             const winner = [...game.players]
               .map((p) => ({ ...p, net: p.cashOut - p.buyIn }))
               .sort((a, b) => b.net - a.net)[0] ?? null;
+            const isSelected = game.id === selectId;
+            const cardHighlight = isSelected
+              ? "border-[#22d3ee]/80 shadow-[0_0_30px_rgba(34,211,238,0.25)] ring-2 ring-[#22d3ee]/40 bg-[#22d3ee]/[0.03]"
+              : "border-white/5 hover:border-[#39FF14]/30 bg-black/20";
             return (
               <Link
                 key={game.id}
+                id={`game-${game.id}`}
                 href={`/games/history/${game.id}`}
-                className="group bg-black/20 hover:bg-white/5 border border-white/5 hover:border-[#39FF14]/30 rounded-xl p-4 transition-all grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_2fr_1fr] md:items-center gap-3 md:gap-4"
+                className={`group hover:bg-white/5 rounded-xl p-4 border transition-all grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_2fr_1fr] md:items-center gap-3 md:gap-4 ${cardHighlight}`}
               >
                 {/* Date */}
                 <div className="flex items-center gap-4 min-w-0">
                   <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/50 group-hover:text-[#39FF14] transition-colors border border-white/10 group-hover:border-[#39FF14]/30 shrink-0">
                     <Calendar size={16} />
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-bold text-white/90 group-hover:text-white truncate">
-                      {game.date}
-                    </h3>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-lg font-bold text-white/90 group-hover:text-white truncate">
+                        {game.date}
+                      </h3>
+                      {unsettledGameIds.has(game.id) && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-red-400/10 border border-red-400/30 text-red-400 tracking-wider uppercase shrink-0">
+                          Unsettled
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-white/40 truncate">
                       {game.duration} · {game.blinds}
                     </p>
                   </div>
                 </div>
 
-                {/* Players */}
-                <div className="flex items-center gap-2">
-                  <Users size={14} className="text-white/40 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Players</p>
-                    <p className="text-base font-bold text-white/80">{game.players.length}</p>
+                {/* Players & Pot side-by-side on mobile, direct grid elements on desktop */}
+                <div className="grid grid-cols-2 gap-4 md:contents">
+                  {/* Players */}
+                  <div className="flex items-center gap-2">
+                    <Users size={14} className="text-white/40 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Players</p>
+                      <p className="text-base font-bold text-white/80">{game.players.length}</p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Pot */}
-                <div className="flex items-center gap-2">
-                  <CircleDollarSign size={14} className="text-[#39FF14]/60 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Pot</p>
-                    <p className="text-base font-bold text-[#39FF14]">£{game.totalPot.toLocaleString()}</p>
+                  {/* Pot */}
+                  <div className="flex items-center gap-2">
+                    <CircleDollarSign size={14} className="text-[#39FF14]/60 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Pot</p>
+                      <p className="text-base font-bold text-[#39FF14]">{formatCurrency(game.totalPot)}</p>
+                    </div>
                   </div>
                 </div>
 
@@ -275,10 +339,10 @@ export default function GamesIndexPage() {
                       <>
                         <p className="text-base font-bold text-yellow-400 truncate">
                           {winner.name}{" "}
-                          <span className="text-white/90">£{winner.cashOut.toFixed(2)}</span>
+                          <span className="text-white/90">{formatCurrency(winner.cashOut)}</span>
                         </p>
                         <p className="text-xs text-[#39FF14] font-bold tabular-nums">
-                          +£{winner.net.toFixed(2)} profit
+                          {formatCurrency(winner.net, true)} profit
                         </p>
                       </>
                     ) : (

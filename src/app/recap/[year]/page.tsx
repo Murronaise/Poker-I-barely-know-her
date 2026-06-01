@@ -8,6 +8,8 @@ import { type HistoricalGame } from "@/lib/historical-games";
 import { fetchEffectiveGames } from "@/lib/game-store";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatCurrency } from "@/lib/format";
+
 
 export const dynamic = "force-dynamic";
 
@@ -115,8 +117,7 @@ export default async function YearlyRecapPage({
     }
   }
 
-  const formatPence = (n: number) =>
-    `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
+  const formatPence = (n: number) => formatCurrency(n, true);
 
   // ---- Render -------------------------------------------------------------
   return (
@@ -129,7 +130,7 @@ export default async function YearlyRecapPage({
           <ChevronLeft size={18} />
           <span>Back to Dashboard</span>
         </Link>
-
+ 
         <div className="flex items-center gap-3 mb-8">
           <div className="p-2.5 bg-yellow-400/10 rounded-xl border border-yellow-400/30">
             <Trophy className="text-yellow-400" size={22} />
@@ -139,17 +140,17 @@ export default async function YearlyRecapPage({
               {year} in Poker
             </h1>
             <p className="text-white/50 text-base mt-2">
-              {totalGames} session{totalGames === 1 ? "" : "s"} · {uniquePlayers} players · £{totalPot.toLocaleString()} of chips moved
+              {totalGames} session{totalGames === 1 ? "" : "s"} · {uniquePlayers} players · {formatCurrency(totalPot)} of chips moved
             </p>
           </div>
         </div>
-
+ 
         {/* Big number cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-6">
           {[
             { label: "Sessions", value: String(totalGames), icon: Activity, color: "text-[#39FF14]" },
-            { label: "Pot moved", value: `£${totalPot.toLocaleString()}`, icon: Coins, color: "text-cyan-400" },
-            { label: "Food eaten", value: `£${totalFood.toFixed(2)}`, icon: Pizza, color: "text-orange-400" },
+            { label: "Pot moved", value: formatCurrency(totalPot), icon: Coins, color: "text-cyan-400" },
+            { label: "Food eaten", value: formatCurrency(totalFood), icon: Pizza, color: "text-orange-400" },
             { label: "Players", value: String(uniquePlayers), icon: Users, color: "text-yellow-400" },
           ].map((s) => (
             <div
@@ -197,7 +198,7 @@ export default async function YearlyRecapPage({
           />
           <RecapCard
             title="Food Gremlin"
-            subtitle={`£${foodie.food.toFixed(2)} eaten`}
+            subtitle={`${formatCurrency(foodie.food)} eaten`}
             playerName={foodie.name}
             avatarUrl={avatarMap[foodie.name]}
             accent="from-orange-500/30 to-yellow-400/20 border-orange-400/40"
@@ -228,7 +229,7 @@ export default async function YearlyRecapPage({
           <PeakCard
             label="Biggest Pot"
             detail={biggestPotGame.date}
-            value={`£${biggestPotGame.totalPot.toLocaleString()}`}
+            value={formatCurrency(biggestPotGame.totalPot)}
             accent="text-cyan-400"
             icon={<Coins className="text-cyan-400" size={14} />}
           />
@@ -266,7 +267,7 @@ export default async function YearlyRecapPage({
                     {a.sessions}p
                   </div>
                   <div className="hidden sm:block col-span-1 text-right text-xs text-orange-400/70 tabular-nums">
-                    £{a.food.toFixed(2)}
+                    {formatCurrency(a.food)}
                   </div>
                   <div
                     className={`col-span-3 text-right font-black text-base tabular-nums ${

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Trophy, ChevronLeft, Crown, Medal, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import LifetimeProfitChart, { getDefaultLifetimeChartData } from "@/components/LifetimeProfitChart";
+import LifetimeProfitChart from "@/components/LifetimeProfitChart";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchEffectiveGames } from "@/lib/game-store";
 import {
@@ -18,12 +18,20 @@ export default async function LeaderboardsPage({
   const allGames = await fetchEffectiveGames(sb);
   const leaderboardCategories = computeLeaderboardCategories(allGames);
 
-  const resolvedParams = await searchParams;
+  const resolvedParams = searchParams ? await searchParams : {};
   // Landing defaults to the chart-only "Overall Winners" view; Money
   // Printer and the rest are reachable via the category switcher.
-  const requested = resolvedParams.category || "overall-winners";
-  const category =
-    leaderboardCategories[requested] ?? leaderboardCategories["overall-winners"];
+  const rawCategory = resolvedParams?.category;
+  const requested = typeof rawCategory === "string" ? rawCategory : (Array.isArray(rawCategory) ? rawCategory[0] : "overall-winners");
+  
+  const fallbackCategory = {
+    slug: "overall-winners",
+    title: "Overall Winners",
+    subtitle: "Lifetime net profit at a glance.",
+    metricLabel: "Profit",
+    rows: [],
+  };
+  const category = (leaderboardCategories && leaderboardCategories[requested]) || leaderboardCategories?.["overall-winners"] || fallbackCategory;
 
   const avatarMap: Record<string, string> = {};
   try {
@@ -37,8 +45,9 @@ export default async function LeaderboardsPage({
     // ignore
   }
 
-  const podium = category.rows.slice(0, 3);
-  const rest = category.rows.slice(3);
+  const categoryRows = category?.rows || [];
+  const podium = categoryRows.slice(0, 3);
+  const rest = categoryRows.slice(3);
 
   // Render podium in visual order (2nd, 1st, 3rd) instead of using CSS `order`.
   // CSS order shuffles paint but leaves DOM at 1-2-3, which means tab order
@@ -56,7 +65,7 @@ export default async function LeaderboardsPage({
     <main className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(57,255,20,0.05)_0%,_rgba(14,17,23,1)_60%)] text-[#FAFAFA] px-4 md:px-6 xl:px-12 py-5">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-4 shrink-0"
+        className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-4 shrink-0 min-h-11 py-2"
       >
         <ChevronLeft size={18} />
         <span>Back to Dashboard</span>
@@ -125,7 +134,7 @@ export default async function LeaderboardsPage({
           <div className="relative h-[320px] md:h-[420px]">
             <div className="h-full overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="h-full md:w-full min-w-[480px] md:min-w-0">
-                <LifetimeProfitChart players={getDefaultLifetimeChartData(allGames)} />
+                <LifetimeProfitChart games={allGames} />
               </div>
             </div>
             <div
@@ -202,7 +211,7 @@ export default async function LeaderboardsPage({
                     <PlayerAvatar
                       name={row.player}
                       avatarUrl={avatarMap[row.player]}
-                      size={realRank === 1 ? 88 : 72}
+                      size={realRank === 1 ? 72 : 56}
                       className={`sm:hidden rounded-full border-[3px] shadow-lg ${borderColor} ${
                         realRank === 1
                           ? "shadow-yellow-400/30"
@@ -279,10 +288,10 @@ export default async function LeaderboardsPage({
                   <div className="w-full text-center border-t border-white/10 pt-2 shrink-0">
                     <p
                       className={`text-base md:text-lg font-black ${
-                        row.value.startsWith("-") ? "text-red-400" : "text-[#39FF14]"
+                        row?.value?.startsWith("-") ? "text-red-400" : "text-[#39FF14]"
                       }`}
                     >
-                      {row.value}
+                      {row?.value || ""}
                     </p>
                   </div>
                 </div>
@@ -309,19 +318,19 @@ export default async function LeaderboardsPage({
           </div>
 
           <div className="md:flex-1 md:min-h-0 md:overflow-auto divide-y divide-white/5">
-            {rest.map((row) => {
+            {rest.map((row, idx) => {
               const trendLabel =
-                row.trendDirection === "up"
+                row?.trendDirection === "up"
                   ? "trending up"
-                  : row.trendDirection === "down"
+                  : row?.trendDirection === "down"
                     ? "trending down"
                     : "no change";
-              const valueIsNegative = row.value.startsWith("-");
+              const valueIsNegative = row?.value?.startsWith("-") ?? false;
               return (
                 <Link
-                  key={row.rank}
-                  href={`/profile/${encodeURIComponent(row.player.toLowerCase().replace(/ /g, "-"))}`}
-                  aria-label={`Rank ${row.rank}: ${row.player}, ${category.metricLabel} ${row.value}, win rate ${row.winRate}, ${row.sessions} sessions, ${trendLabel}`}
+                  key={row?.player || idx}
+                  href={`/profile/${encodeURIComponent((row?.player || "").toLowerCase().replace(/ /g, "-"))}`}
+                  aria-label={`Rank ${row?.rank || ""}: ${row?.player || ""}, ${category?.metricLabel || ""} ${row?.value || ""}, win rate ${row?.winRate || ""}, ${row?.sessions || 0} sessions, ${trendLabel}`}
                   className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#39FF14]/60"
                 >
                   {/* Mobile (<md): single-row card with avatar, name, value
@@ -344,17 +353,17 @@ export default async function LeaderboardsPage({
                       </span>
                     </div>
                     <PlayerAvatar
-                      name={row.player}
-                      avatarUrl={avatarMap[row.player]}
+                      name={row?.player || ""}
+                      avatarUrl={avatarMap[row?.player || ""]}
                       size={44}
                       className="rounded-full border border-white/10 group-hover:border-[#39FF14]/50 transition-colors shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-base group-hover:text-[#39FF14] transition-colors truncate">
-                        {row.player}
+                        {row?.player || ""}
                       </p>
                       <p className="text-xs text-white/40 mt-0.5 tabular-nums">
-                        {row.winRate} win · {row.sessions} sess
+                        {row?.winRate || "" } win · {row?.sessions || 0} sess
                       </p>
                     </div>
                     <span
@@ -362,35 +371,35 @@ export default async function LeaderboardsPage({
                         valueIsNegative ? "text-red-400" : "text-[#39FF14]"
                       }`}
                     >
-                      {valueIsNegative ? row.value : `+${row.value.replace(/^\+?/, "")}`}
+                      {valueIsNegative ? (row?.value || "") : `+${(row?.value || "").replace(/^\+?/, "")}`}
                     </span>
                   </div>
 
                   {/* Tablet+ (md+): full table grid. */}
                   <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-3 items-center hover:bg-white/5 transition-colors group min-h-[56px]">
                     <div className="col-span-2 text-center flex items-center justify-center gap-2">
-                      <span className="text-xl font-black text-white/40">#{row.rank}</span>
+                      <span className="text-xl font-black text-white/40">#{row?.rank || ""}</span>
                       <span aria-label={trendLabel} title={trendLabel}>
-                        {row.trendDirection === "up" && (
+                        {row?.trendDirection === "up" && (
                           <ArrowUpRight size={14} className="text-[#39FF14]" aria-hidden="true" />
                         )}
-                        {row.trendDirection === "down" && (
+                        {row?.trendDirection === "down" && (
                           <ArrowDownRight size={14} className="text-red-400" aria-hidden="true" />
                         )}
-                        {row.trendDirection === "flat" && (
+                        {row?.trendDirection === "flat" && (
                           <Minus size={14} className="text-white/20" aria-hidden="true" />
                         )}
                       </span>
                     </div>
                     <div className="col-span-4 flex items-center gap-3 min-w-0">
                       <PlayerAvatar
-                        name={row.player}
-                        avatarUrl={avatarMap[row.player]}
+                        name={row?.player || ""}
+                        avatarUrl={avatarMap[row?.player || ""]}
                         size={48}
                         className="rounded-full border border-white/10 group-hover:border-[#39FF14]/50 transition-colors"
                       />
                       <span className="font-bold text-base group-hover:text-[#39FF14] transition-colors truncate">
-                        {row.player}
+                        {row?.player || ""}
                       </span>
                     </div>
                     <div className="col-span-2 text-right">
@@ -399,14 +408,14 @@ export default async function LeaderboardsPage({
                           valueIsNegative ? "text-red-400" : "text-[#39FF14]"
                         }`}
                       >
-                        {row.value}
+                        {row?.value || ""}
                       </span>
                     </div>
                     <div className="col-span-2 text-center font-semibold text-base text-white/70 tabular-nums">
-                      {row.winRate}
+                      {row?.winRate || ""}
                     </div>
                     <div className="col-span-2 text-center font-semibold text-base text-white/70 tabular-nums">
-                      {row.sessions}
+                      {row?.sessions || 0}
                     </div>
                   </div>
                 </Link>

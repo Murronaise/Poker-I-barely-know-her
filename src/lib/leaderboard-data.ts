@@ -1,4 +1,5 @@
 import { type HistoricalGame } from "./historical-games";
+import { formatCurrency } from "./format";
 
 export type LeaderboardRow = {
   rank: number;
@@ -61,14 +62,14 @@ export const leaderboardCategories: Record<string, LeaderboardCategory> = {
     subtitle: "Has pushed the most chips across the table.",
     metricLabel: "Total Invested",
     rows: [
-      { rank: 1, player: "Tristan", value: "£170", winRate: "50%", sessions: 4, positive: true },
-      { rank: 2, player: "Harry", value: "£105", winRate: "33%", sessions: 3, positive: true },
-      { rank: 3, player: "Kai", value: "£100", winRate: "50%", sessions: 4, positive: true },
-      { rank: 4, player: "Toby", value: "£100", winRate: "75%", sessions: 4, positive: true },
-      { rank: 5, player: "Jake", value: "£50", winRate: "100%", sessions: 2, positive: true },
-      { rank: 6, player: "Connor", value: "£45", winRate: "100%", sessions: 2, positive: true },
-      { rank: 7, player: "Tony", value: "£25", winRate: "100%", sessions: 1, positive: true },
-      { rank: 8, player: "Liam", value: "£20", winRate: "100%", sessions: 1, positive: true },
+      { rank: 1, player: "Tristan", value: "£170.00", winRate: "50%", sessions: 4, positive: true },
+      { rank: 2, player: "Harry", value: "£105.00", winRate: "33%", sessions: 3, positive: true },
+      { rank: 3, player: "Kai", value: "£100.00", winRate: "50%", sessions: 4, positive: true },
+      { rank: 4, player: "Toby", value: "£100.00", winRate: "75%", sessions: 4, positive: true },
+      { rank: 5, player: "Jake", value: "£50.00", winRate: "100%", sessions: 2, positive: true },
+      { rank: 6, player: "Connor", value: "£45.00", winRate: "100%", sessions: 2, positive: true },
+      { rank: 7, player: "Tony", value: "£25.00", winRate: "100%", sessions: 1, positive: true },
+      { rank: 8, player: "Liam", value: "£20.00", winRate: "100%", sessions: 1, positive: true },
     ],
   },
   "the-tank": {
@@ -137,12 +138,6 @@ export const leaderboardCategories: Record<string, LeaderboardCategory> = {
   },
 };
 
-// "overall-winners" is the chart-only landing page (see the leaderboards
-// route — it swaps in <LifetimeProfitChart> for this slug). It has no rows
-// because the chart derives its data directly from historicalGames.
-// "overall-leader" / Money Printer is the same data presented as a podium
-// + ranked table, kept alongside so the design system stays consistent
-// across the other named categories.
 leaderboardCategories["overall-winners"] = {
   slug: "overall-winners",
   title: "Overall Winners",
@@ -162,24 +157,28 @@ export const leaderboardCategoryOrder: string[] = [
   "the-maniac",
 ];
 
-export function computeLeaderboardCategories(games: HistoricalGame[]): Record<string, LeaderboardCategory> {
+export function computeLeaderboardCategories(games: HistoricalGame[] = []): Record<string, LeaderboardCategory> {
+  const safeGames = games ?? [];
   const byPlayer = new Map<string, { date: string; net: number; buyIn: number; food: number }[]>();
   // Reverse games so we walk oldest first (chronological order)
-  const chronoGames = [...games].reverse();
+  const chronoGames = [...safeGames].reverse();
   chronoGames.forEach((g) => {
+    if (!g || !g.players) return;
     g.players.forEach((p) => {
-      const net = p.cashOut - p.buyIn;
+      if (!p || !p.name) return;
+      const net = (p.cashOut ?? 0) - (p.buyIn ?? 0);
       const lower = p.name.toLowerCase();
       if (!byPlayer.has(lower)) byPlayer.set(lower, []);
-      byPlayer.get(lower)!.push({ date: g.date, net, buyIn: p.buyIn, food: p.food });
+      byPlayer.get(lower)!.push({ date: g.date, net, buyIn: p.buyIn ?? 0, food: p.food ?? 0 });
     });
   });
 
   const playerStats = [...byPlayer.entries()].map(([lower, sessions]) => {
     // Find the latest casing of the name from the games list
     let displayName = lower;
-    for (const g of games) {
-      const p = g.players.find(pl => pl.name.toLowerCase() === lower);
+    for (const g of safeGames) {
+      if (!g || !g.players) continue;
+      const p = g.players.find(pl => pl && pl.name && pl.name.toLowerCase() === lower);
       if (p) {
         displayName = p.name;
         break;
@@ -192,8 +191,8 @@ export function computeLeaderboardCategories(games: HistoricalGame[]): Record<st
     const winSessions = sessions.filter(s => s.net >= 0).length;
     const winRate = sessions.length > 0 ? (winSessions / sessions.length) * 100 : 0;
 
-    const worstEntry = sessions.reduce((worst, s) => s.net < worst.net ? s : worst, sessions[0]);
-    const bestEntry = sessions.reduce((best, s) => s.net > best.net ? s : best, sessions[0]);
+    const worstEntry = sessions.reduce((worst, s) => s.net < worst.net ? s : worst, sessions[0]) ?? { net: 0, date: "" };
+    const bestEntry = sessions.reduce((best, s) => s.net > best.net ? s : best, sessions[0]) ?? { net: 0, date: "" };
     const swing = bestEntry.net - worstEntry.net;
     const lastSessionNet = sessions[sessions.length - 1]?.net ?? 0;
 
@@ -212,16 +211,13 @@ export function computeLeaderboardCategories(games: HistoricalGame[]): Record<st
     };
   });
 
-  const formatPence = (n: number) =>
-    `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
-
   // 1. Money Printer (overall-leader)
   const overallLeaderRows = [...playerStats]
     .sort((a, b) => b.netLifetime - a.netLifetime)
     .map((p, idx) => ({
       rank: idx + 1,
       player: p.name,
-      value: formatPence(p.netLifetime),
+      value: formatCurrency(p.netLifetime, true),
       winRate: `${Math.round(p.winRate)}%`,
       sessions: p.sessions,
       positive: p.netLifetime >= 0,
@@ -250,7 +246,7 @@ export function computeLeaderboardCategories(games: HistoricalGame[]): Record<st
     .map((p, idx) => ({
       rank: idx + 1,
       player: p.name,
-      value: `£${Math.round(p.totalBuyIn).toLocaleString()}`,
+      value: formatCurrency(p.totalBuyIn),
       winRate: `${Math.round(p.winRate)}%`,
       sessions: p.sessions,
       positive: p.netLifetime >= 0,
@@ -262,7 +258,7 @@ export function computeLeaderboardCategories(games: HistoricalGame[]): Record<st
     .map((p, idx) => ({
       rank: idx + 1,
       player: p.name,
-      value: formatPence(p.worstSingleNet),
+      value: formatCurrency(p.worstSingleNet, true),
       winRate: `${Math.round(p.winRate)}%`,
       sessions: p.sessions,
       positive: p.netLifetime >= 0,
@@ -274,7 +270,7 @@ export function computeLeaderboardCategories(games: HistoricalGame[]): Record<st
     .map((p, idx) => ({
       rank: idx + 1,
       player: p.name,
-      value: `£${p.totalFood.toFixed(2)}`,
+      value: formatCurrency(p.totalFood),
       winRate: `${Math.round(p.winRate)}%`,
       sessions: p.sessions,
       positive: p.netLifetime >= 0,
@@ -298,7 +294,7 @@ export function computeLeaderboardCategories(games: HistoricalGame[]): Record<st
     .map((p, idx) => ({
       rank: idx + 1,
       player: p.name,
-      value: `£${p.swing.toFixed(2)}`,
+      value: formatCurrency(p.swing),
       winRate: `${Math.round(p.winRate)}%`,
       sessions: p.sessions,
       positive: p.netLifetime >= 0,

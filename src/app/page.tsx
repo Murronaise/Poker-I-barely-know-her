@@ -39,6 +39,7 @@ import { getEffectiveHistoricalGames, fetchEffectiveGames } from "@/lib/game-sto
 import { getStoredPlayers } from "@/lib/local-store";
 import { loadRegisteredPlayers } from "@/lib/registered-players";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { formatCurrency } from "@/lib/format";
 
 const pageVariants: Variants = {
   hidden: { opacity: 0 },
@@ -195,8 +196,7 @@ function topBy(
   return { leader, runnerUp, tied };
 }
 
-const formatSigned = (n: number) =>
-  `${n >= 0 ? "+" : "-"}£${Math.abs(n).toFixed(2)}`;
+const formatSigned = (n: number) => formatCurrency(n, true);
 
 function computeMetrics(lifetimeStats: PlayerLifetimeStats[]): MetricCard[] {
   if (lifetimeStats.length === 0) return [];
@@ -260,14 +260,14 @@ function computeMetrics(lifetimeStats: PlayerLifetimeStats[]): MetricCard[] {
       id: 3, title: "Mortgage Material", subtext: "Has pushed the most chips across the table.",
       categorySlug: "the-whale",
       player: whale.leader.name,
-      value: `£${whale.leader.totalBuyIn.toLocaleString()}`,
+      value: formatCurrency(whale.leader.totalBuyIn),
       icon: CircleDollarSign, valColor: "text-cyan-400",
       themeColor: "text-cyan-400", themeRgb: "34,211,238",
       runnerUp: whale.runnerUp
-        ? { name: whale.runnerUp.name, value: `£${whale.runnerUp.totalBuyIn.toLocaleString()}` }
+        ? { name: whale.runnerUp.name, value: formatCurrency(whale.runnerUp.totalBuyIn) }
         : { name: "—", value: "—" },
       lead: whale.runnerUp
-        ? `+£${(whale.leader.totalBuyIn - whale.runnerUp.totalBuyIn).toFixed(2)} over runner-up`
+        ? `+${formatCurrency(whale.leader.totalBuyIn - whale.runnerUp.totalBuyIn)} over runner-up`
         : "no challengers",
       trend: whale.leader.volumeTrend,
       trendPositive: true,
@@ -290,14 +290,14 @@ function computeMetrics(lifetimeStats: PlayerLifetimeStats[]): MetricCard[] {
       id: 5, title: "Food Gremlin", subtext: "Eats more than they play.",
       categorySlug: "the-vacuum",
       player: vacuum.leader.name,
-      value: `£${vacuum.leader.totalFood.toFixed(2)}`,
+      value: formatCurrency(vacuum.leader.totalFood),
       icon: Pizza, valColor: "text-orange-400",
       themeColor: "text-orange-400", themeRgb: "251,146,60",
       runnerUp: vacuum.runnerUp
-        ? { name: vacuum.runnerUp.name, value: `£${vacuum.runnerUp.totalFood.toFixed(2)}` }
+        ? { name: vacuum.runnerUp.name, value: formatCurrency(vacuum.runnerUp.totalFood) }
         : { name: "—", value: "—" },
       lead: vacuum.runnerUp
-        ? `+£${(vacuum.leader.totalFood - vacuum.runnerUp.totalFood).toFixed(2)} over runner-up`
+        ? `+${formatCurrency(vacuum.leader.totalFood - vacuum.runnerUp.totalFood)} over runner-up`
         : "no challengers",
       trend: vacuum.leader.foodTrend,
       trendPositive: true,
@@ -328,11 +328,11 @@ function computeMetrics(lifetimeStats: PlayerLifetimeStats[]): MetricCard[] {
       id: 7, title: "Cardiac Episode", subtext: "Wild swings between best and worst nights.",
       categorySlug: "the-maniac",
       player: maniac.leader.name,
-      value: `£${maniac.leader.swing.toFixed(2)} Swing`,
+      value: `${formatCurrency(maniac.leader.swing)} Swing`,
       icon: Zap, valColor: "text-purple-400",
       themeColor: "text-purple-400", themeRgb: "192,132,252",
       runnerUp: maniac.runnerUp
-        ? { name: maniac.runnerUp.name, value: `£${maniac.runnerUp.swing.toFixed(2)}` }
+        ? { name: maniac.runnerUp.name, value: formatCurrency(maniac.runnerUp.swing) }
         : { name: "—", value: "—" },
       lead: `${formatSigned(maniac.leader.worstSingleNet)} to ${formatSigned(maniac.leader.bestSingleNet)}`,
       trend: maniac.leader.swingTrend,
@@ -429,11 +429,11 @@ export default function Dashboard() {
       },
       {
         label: "Total Volume",
-        value: `£${totalVolume.toLocaleString()}`,
+        value: formatCurrency(totalVolume),
         icon: Coins,
         color: "text-cyan-400",
         href: "/stats",
-        ariaLabel: `Total volume £${totalVolume}. Open volume breakdown.`,
+        ariaLabel: `Total volume ${formatCurrency(totalVolume)}. Open volume breakdown.`,
       },
       {
         label: "Players",
@@ -445,12 +445,12 @@ export default function Dashboard() {
       },
       {
         label: "Biggest Pot",
-        value: biggest ? `£${biggest.totalPot.toLocaleString()}` : "£0",
+        value: biggest ? formatCurrency(biggest.totalPot) : "£0.00",
         icon: TrendingUp,
         color: "text-[#39FF14]",
         href: biggest ? `/games/history/${biggest.id}` : "/games",
         ariaLabel: biggest
-          ? `Biggest pot £${biggest.totalPot} on ${biggest.date}. Open that session.`
+          ? `Biggest pot ${formatCurrency(biggest.totalPot)} on ${biggest.date}. Open that session.`
           : "No sessions",
       },
     ];
@@ -988,13 +988,10 @@ export default function Dashboard() {
           <div className="relative flex-1 min-h-0">
             <div className="h-full overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div
-                className="h-full md:w-full"
+                className="h-full md:w-full min-w-[var(--mobile-chart-min-width)] md:min-w-0"
                 style={{
-                  minWidth:
-                    typeof window !== "undefined" && window.innerWidth < 768
-                      ? `${Math.max(chartData.length * 64, 480)}px`
-                      : undefined,
-                }}
+                  "--mobile-chart-min-width": `${Math.max(chartData.length * 64, 480)}px`
+                } as React.CSSProperties}
               >
                 <LifetimeProfitChart players={chartData} />
               </div>

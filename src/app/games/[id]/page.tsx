@@ -67,6 +67,12 @@ type GameEvent = {
 
 const REBUY_PRESETS = [10, 20, 50];
 
+function calculateSessionDuration(events: { type: string; ts: Date | string }[]): number {
+  const startEvent = events.find((e) => e.type === "start");
+  const startedAt = startEvent ? new Date(startEvent.ts).getTime() : Date.now();
+  return Math.max(1, Math.round((Date.now() - startedAt) / 60_000));
+}
+
 function ActiveGameContent() {
   const searchParams = useSearchParams();
   const routeParams = useParams<{ id?: string }>();
@@ -620,12 +626,7 @@ function ActiveGameContent() {
     // recovers the data and the user can retry End Game. The success
     // branch is what wipes the snapshot.
     const browserClient = createSupabaseBrowserClient();
-    const startEvent = events.find((e) => e.type === "start");
-    const startedAt = startEvent ? new Date(startEvent.ts).getTime() : Date.now();
-    const durationMinutes = Math.max(
-      1,
-      Math.round((Date.now() - startedAt) / 60_000),
-    );
+    const durationMinutes = calculateSessionDuration(events);
     void (async () => {
       try {
         await saveFinalizedGame(browserClient, {

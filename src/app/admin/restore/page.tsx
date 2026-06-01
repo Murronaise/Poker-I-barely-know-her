@@ -7,6 +7,7 @@ import { fetchDeletedGameRecords } from "@/lib/soft-delete-db";
 import { fetchSavedGames } from "@/lib/games-db";
 import { historicalGames } from "@/lib/historical-games";
 import RestoreButton from "@/components/RestoreButton";
+import { formatCurrency } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,7 @@ export default async function AdminRestorePage() {
                       )}
                     </div>
                     <p className="text-xs text-white/40 tabular-nums">
-                      {r.game ? `${r.game.location} · ${r.game.duration} · £${r.game.totalPot.toLocaleString()}` : "—"}
+                      {r.game ? `${r.game.location} · ${r.game.duration} · ${formatCurrency(r.game.totalPot)}` : "—"}
                     </p>
                     <p className="text-[10px] text-white/30 mt-1 tracking-widest uppercase">
                       Deleted {new Date(r.deletedAt).toLocaleString()}

@@ -157,12 +157,9 @@ export default function CreateGamePage() {
   const [venue, setVenueState] = useState<string>(() =>
     typeof window === "undefined" ? DEFAULT_VENUE : getVenue(),
   );
-  const [templates, setTemplates] = useState<BlindTemplate[]>([]);
-
-  // Load blind templates on mount
-  useEffect(() => {
-    setTemplates(getBlindTemplates());
-  }, []);
+  const [templates, setTemplates] = useState<BlindTemplate[]>(() =>
+    typeof window === "undefined" ? [] : getBlindTemplates()
+  );
 
   const togglePlayer = (player: string) => {
     setSelectedPlayers((prev) =>
@@ -213,7 +210,7 @@ export default function CreateGamePage() {
     >
       <Link
         href="/games"
-        className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-4 shrink-0"
+        className="inline-flex items-center gap-2 text-base text-white/50 hover:text-[#39FF14] font-semibold transition-colors mb-4 shrink-0 min-h-11 py-2"
       >
         <ChevronLeft size={18} />
         <span>Back to Games</span>
@@ -373,7 +370,7 @@ export default function CreateGamePage() {
                   key={p.label}
                   type="button"
                   onClick={() => applyBlindPreset(p.sb, p.bb)}
-                  className={`text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded-xl border transition-colors ${
+                  className={`text-xs font-bold tracking-widest uppercase min-h-11 px-3.5 sm:px-2.5 sm:py-1 sm:min-h-0 rounded-xl border transition-colors inline-flex items-center justify-center ${
                     active
                       ? "bg-cyan-400/15 border-cyan-400/60 text-cyan-300"
                       : "bg-black/30 border-white/10 text-white/60 hover:border-cyan-400/40 hover:text-cyan-300"
@@ -411,7 +408,7 @@ export default function CreateGamePage() {
                   return (
                     <div
                       key={t.name}
-                      className={`flex items-center gap-1 text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded-lg border transition-colors ${
+                      className={`flex items-center gap-1 text-xs font-bold tracking-widest uppercase min-h-11 px-3.5 sm:px-2.5 sm:py-1 sm:min-h-0 rounded-lg border transition-colors ${
                         active
                           ? "bg-purple-400/15 border-purple-400/60 text-purple-300"
                           : "bg-black/30 border-white/10 text-white/60"
@@ -474,7 +471,7 @@ export default function CreateGamePage() {
                   key={t}
                   type="button"
                   onClick={() => setBlindTimer(t)}
-                  className={`text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded-xl border transition-colors ${
+                  className={`text-xs font-bold tracking-widest uppercase min-h-11 px-3.5 sm:px-2.5 sm:py-1 sm:min-h-0 rounded-xl border transition-colors inline-flex items-center justify-center ${
                     active
                       ? "bg-yellow-400/15 border-yellow-400/60 text-yellow-300"
                       : "bg-black/30 border-white/10 text-white/60 hover:border-yellow-400/40 hover:text-yellow-300"
@@ -516,7 +513,7 @@ export default function CreateGamePage() {
                   key={b}
                   type="button"
                   onClick={() => setDefaultBuyIn(b)}
-                  className={`text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded-xl border transition-colors ${
+                  className={`text-xs font-bold tracking-widest uppercase min-h-11 px-3.5 sm:px-2.5 sm:py-1 sm:min-h-0 rounded-xl border transition-colors inline-flex items-center justify-center ${
                     active
                       ? "bg-[#39FF14]/15 border-[#39FF14]/60 text-[#39FF14]"
                       : "bg-black/30 border-white/10 text-white/60 hover:border-[#39FF14]/40 hover:text-[#39FF14]"

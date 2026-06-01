@@ -907,7 +907,7 @@ export default function ProfilePage({
                         {record.draws > 0 && <span className="text-white/30 font-bold"> · {record.draws}D</span>}
                       </p>
                       <p className={`text-xs font-bold tabular-nums mt-1 ${record.netVs >= 0 ? "text-[#39FF14]/80" : "text-red-400/80"}`}>
-                        you're {record.netVs >= 0 ? "+" : ""}£{record.netVs.toFixed(2)}
+                        you&apos;re {record.netVs >= 0 ? "+" : ""}£{record.netVs.toFixed(2)}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
