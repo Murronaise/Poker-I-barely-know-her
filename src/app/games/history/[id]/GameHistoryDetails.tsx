@@ -18,10 +18,28 @@ import {
   getHandlesFor,
   PROVIDER_LABEL,
   type PaymentHandles,
+  type PaymentProvider,
 } from "@/lib/payment-links";
 import { type HistoricalGame } from "@/lib/historical-games";
 import { type SettlementRecord } from "@/lib/settlements-db";
 import { formatCurrency } from "@/lib/format";
+
+const getProviderStyle = (provider: PaymentProvider): string => {
+  switch (provider) {
+    case "paypal":
+      // Vibrant PayPal blue theme: high contrast light blue text, dark blue/indigo translucent bg, distinct border
+      return "bg-blue-600/15 border-blue-500/40 text-blue-400 hover:bg-blue-600/25 hover:border-blue-400 hover:text-blue-300 shadow-[0_0_12px_rgba(59,130,246,0.12)]";
+    case "monzo":
+      // Hot coral / orange Monzo theme
+      return "bg-[#ff4f5a]/10 border-[#ff4f5a]/30 text-[#ff4f5a] hover:bg-[#ff4f5a]/20 hover:border-[#ff4f5a] hover:text-[#ff7880] shadow-[0_0_12px_rgba(255,79,90,0.08)]";
+    case "revolut":
+      // Sleek clean white/slate theme
+      return "bg-white/5 border-white/20 text-white/80 hover:bg-white/10 hover:border-white hover:text-white";
+    default:
+      return "bg-white/5 border-white/10 text-white/50 hover:bg-white/10";
+  }
+};
+
 
 type GameHistoryDetailsProps = {
   game: HistoricalGame;
@@ -384,10 +402,10 @@ export default function GameHistoryDetails({
                             {/* Footer actions: settle state/links + button */}
                             <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5 flex-wrap">
                               {/* Left part: Payment links or Settled text */}
-                              <div className="flex items-center gap-1 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 {providers.length > 0 && !meta ? (
                                   <>
-                                    <span className="text-[8px] font-black tracking-widest uppercase text-white/30 mr-1">
+                                    <span className="text-[10px] font-black tracking-widest uppercase text-white/30 mr-1">
                                       Pay:
                                     </span>
                                     {providers.map((provider) => {
@@ -399,7 +417,7 @@ export default function GameHistoryDetails({
                                           href={href}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest uppercase border border-white/10 hover:border-white/20 text-white/50 hover:text-white bg-black/40 transition-colors`}
+                                          className={`inline-flex items-center px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-all duration-200 ${getProviderStyle(provider)}`}
                                         >
                                           {PROVIDER_LABEL[provider]}
                                         </a>
@@ -489,10 +507,10 @@ export default function GameHistoryDetails({
                             {/* Footer actions: settle state/links + button */}
                             <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5 flex-wrap">
                               {/* Left part: Payment links or Settled text */}
-                              <div className="flex items-center gap-1 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 {providers.length > 0 && !meta ? (
                                   <>
-                                    <span className="text-[8px] font-black tracking-widest uppercase text-white/30 mr-1">
+                                    <span className="text-[10px] font-black tracking-widest uppercase text-white/30 mr-1">
                                       Pay:
                                     </span>
                                     {providers.map((provider) => {
@@ -504,7 +522,7 @@ export default function GameHistoryDetails({
                                           href={href}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest uppercase border border-white/10 hover:border-white/20 text-white/50 hover:text-white bg-black/40 transition-colors`}
+                                          className={`inline-flex items-center px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-all duration-200 ${getProviderStyle(provider)}`}
                                         >
                                           {PROVIDER_LABEL[provider]}
                                         </a>
