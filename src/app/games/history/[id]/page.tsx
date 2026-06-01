@@ -250,51 +250,51 @@ export default async function HistoricalGamePage({
               columns off-screen the moment you panned right — cards keep
               every stat tied to its player. */}
 
-          {/* ---------- Mobile (< md): stacked cards ---------- */}
-          <div className="flex flex-col divide-y divide-white/5 md:hidden">
-            {ranked.map((p, i) => (
-              <Link
-                key={p.name}
-                href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
-                className="px-4 py-3 hover:bg-white/5 transition-colors"
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="w-7 text-center font-black text-white/50 tabular-nums shrink-0">
-                    {i === 0 ? <Crown size={16} className="text-yellow-400 inline" /> : `#${i + 1}`}
-                  </span>
-                  <PlayerAvatar
-                    name={p.name}
-                    avatarUrl={avatarMap[p.name]}
-                    size={40}
-                    className="rounded-full border border-white/10 shrink-0"
-                  />
-                  <span className="flex-1 font-bold text-base truncate min-w-0">{p.name}</span>
-                  <span
-                    className={`text-lg font-black tabular-nums shrink-0 ${
-                      p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
-                    }`}
-                  >
-                    {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-white/40">Buy-in</span>
-                    <span className="text-sm font-bold text-white/80 tabular-nums">£{p.buyIn.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-white/40">Cash Out</span>
-                    <span className="text-sm font-bold text-white/80 tabular-nums">£{p.cashOut.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-white/40">
-                      <Pizza size={10} className="text-yellow-400/60" /> Food
+          {/* ---------- Mobile (< md): compact table ---------- */}
+          <div className="flex flex-col md:hidden">
+            <div className="grid grid-cols-12 gap-2 px-4 py-2 border-b border-white/10 bg-black/20 text-[10px] font-bold text-white/40 uppercase tracking-widest shrink-0">
+              <div className="col-span-6 flex items-center gap-2">Player</div>
+              <div className="col-span-2 text-right">In</div>
+              <div className="col-span-2 text-right">Out</div>
+              <div className="col-span-2 text-right">Net</div>
+            </div>
+            <div className="divide-y divide-white/5">
+              {ranked.map((p, i) => (
+                <Link
+                  key={p.name}
+                  href={`/profile/${encodeURIComponent(p.name.toLowerCase().replace(/ /g, "-"))}`}
+                  className="grid grid-cols-12 gap-2 px-4 py-2.5 items-center hover:bg-white/5 transition-colors"
+                >
+                  <div className="col-span-6 flex items-center gap-2 min-w-0">
+                    <span className="w-4 font-black text-white/50 text-xs tabular-nums text-center shrink-0">
+                      {i === 0 ? <Crown size={12} className="text-yellow-400 inline" /> : `#${i + 1}`}
                     </span>
-                    <span className="text-sm font-bold text-white/80 tabular-nums">£{p.food.toFixed(2)}</span>
+                    <PlayerAvatar
+                      name={p.name}
+                      avatarUrl={avatarMap[p.name]}
+                      size={28}
+                      className="rounded-full border border-white/10 shrink-0"
+                    />
+                    <span className="font-bold text-xs truncate min-w-0">{p.name}</span>
                   </div>
-                </div>
-              </Link>
-            ))}
+                  <div className="col-span-2 text-right">
+                    <span className="text-[11px] text-white/60 tabular-nums">£{p.buyIn.toFixed(2)}</span>
+                  </div>
+                  <div className="col-span-2 text-right">
+                    <span className="text-[11px] text-white/60 tabular-nums">£{p.cashOut.toFixed(2)}</span>
+                  </div>
+                  <div className="col-span-2 text-right">
+                    <span
+                      className={`text-[11px] font-black tabular-nums ${
+                        p.net >= 0 ? "text-[#39FF14]" : "text-red-400"
+                      }`}
+                    >
+                      {p.net >= 0 ? "+" : ""}£{p.net.toFixed(2)}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
 
           {/* ---------- Tablet+ (md:): original table grid ---------- */}
@@ -395,48 +395,52 @@ export default async function HistoricalGamePage({
             return (
             <div
               key={`owe-${i}`}
-              className="bg-black/40 border border-red-400/20 rounded-lg p-3 flex flex-col gap-2"
+              className="bg-black/40 border border-red-400/20 rounded-xl p-3.5 flex flex-col gap-3"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
-                <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                  <p className="text-sm font-bold text-white truncate">{s.from}</p>
-                  <p className="text-xs text-red-400/70 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
-                  {meta && (
-                    <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
-                      Paid {relativeTime(meta.settledAt)}
-                      {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
-                    </p>
-                  )}
+              {/* Top Row: Avatar & Debtor Info + Amount */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <p className="text-sm font-bold text-white truncate">{s.from}</p>
+                    <p className="text-xs text-red-400/80 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
+                    {meta && (
+                      <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
+                        Paid {relativeTime(meta.settledAt)}
+                        {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-lg font-black text-red-400 tabular-nums shrink-0 sm:hidden">
+                <p className="text-xl font-black text-red-400 tabular-nums shrink-0">
                   £{(s.pence / 100).toFixed(2)}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                <p className="text-xs text-white/70 tabular-nums">
+              {/* Separator line */}
+              <div className="h-px bg-white/5" />
+
+              {/* Bottom Row: Breakdown + Settle button */}
+              <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                <p className="text-xs text-white/50 tabular-nums">
                   {[
                     s.buyInPence > 0 ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}` : null,
                     s.cashOutPence > 0 ? `Cash-out £${(s.cashOutPence / 100).toFixed(2)}` : null,
                     s.foodPence > 0 ? `Food £${(s.foodPence / 100).toFixed(2)}` : null,
                   ].filter(Boolean).join(" · ")}
                 </p>
-                <p className="text-lg font-black text-red-400 tabular-nums hidden sm:block">
-                  £{(s.pence / 100).toFixed(2)}
-                </p>
-                <SettlementSettleButton
-                  gameId={game.id}
-                  playerName={s.from}
-                  isAdmin={userIsAdmin}
-                  initialSettled={settledPlayers.has(s.from.toLowerCase())}
-                />
-              </div>
+                <div className="shrink-0">
+                  <SettlementSettleButton
+                    gameId={game.id}
+                    playerName={s.from}
+                    isAdmin={userIsAdmin}
+                    initialSettled={settledPlayers.has(s.from.toLowerCase())}
+                  />
+                </div>
               </div>
 
               {providers.length > 0 && !meta && (
-                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/5">
+                <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
                   <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
                     Pay {s.to}:
                   </span>
@@ -468,48 +472,52 @@ export default async function HistoricalGamePage({
             return (
             <div
               key={`pay-${i}`}
-              className="bg-black/40 border border-[#39FF14]/20 rounded-lg p-3 flex flex-col gap-2"
+              className="bg-black/40 border border-[#39FF14]/20 rounded-xl p-3.5 flex flex-col gap-3"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
-                <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                  <p className="text-sm font-bold text-white truncate">{p.to}</p>
-                  <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
-                  {meta && (
-                    <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
-                      Paid {relativeTime(meta.settledAt)}
-                      {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
-                    </p>
-                  )}
+              {/* Top Row: Avatar & Receiver Info + Amount */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <p className="text-sm font-bold text-white truncate">{p.to}</p>
+                    <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
+                    {meta && (
+                      <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
+                        Paid {relativeTime(meta.settledAt)}
+                        {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-lg font-black text-[#39FF14] tabular-nums shrink-0 sm:hidden">
+                <p className="text-xl font-black text-[#39FF14] tabular-nums shrink-0">
                   £{(p.pence / 100).toFixed(2)}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                <p className="text-xs text-white/70 tabular-nums">
+              {/* Separator line */}
+              <div className="h-px bg-white/5" />
+
+              {/* Bottom Row: Breakdown + Settle button */}
+              <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                <p className="text-xs text-white/50 tabular-nums">
                   {[
                     p.buyInPence > 0 ? `Buy-in £${(p.buyInPence / 100).toFixed(2)}` : null,
                     p.cashOutPence > 0 ? `Cash-out £${(p.cashOutPence / 100).toFixed(2)}` : null,
                     p.foodPence > 0 ? `Food £${(p.foodPence / 100).toFixed(2)}` : null,
                   ].filter(Boolean).join(" · ")}
                 </p>
-                <p className="text-lg font-black text-[#39FF14] tabular-nums hidden sm:block">
-                  £{(p.pence / 100).toFixed(2)}
-                </p>
-                <SettlementSettleButton
-                  gameId={game.id}
-                  playerName={p.to}
-                  isAdmin={userIsAdmin}
-                  initialSettled={settledPlayers.has(p.to.toLowerCase())}
-                />
-              </div>
+                <div className="shrink-0">
+                  <SettlementSettleButton
+                    gameId={game.id}
+                    playerName={p.to}
+                    isAdmin={userIsAdmin}
+                    initialSettled={settledPlayers.has(p.to.toLowerCase())}
+                  />
+                </div>
               </div>
 
               {providers.length > 0 && !meta && (
-                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/5">
+                <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
                   <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
                     Pay {p.to}:
                   </span>
