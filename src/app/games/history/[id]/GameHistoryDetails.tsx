@@ -8,9 +8,6 @@ import {
   TrendingDown,
   TrendingUp,
   Pizza,
-  Check,
-  AlertTriangle,
-  Info,
 } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SettlementSettleButton from "@/components/SettlementSettleButton";
@@ -58,7 +55,6 @@ type GameHistoryDetailsProps = {
   settlementRecordsRaw: Record<string, SettlementRecord>;
   totalBuyIn: number;
   totalFood: number;
-  loggedInPlayerName: string | null;
 };
 
 export default function GameHistoryDetails({
@@ -73,11 +69,9 @@ export default function GameHistoryDetails({
   settlementRecordsRaw,
   totalBuyIn,
   totalFood,
-  loggedInPlayerName,
 }: GameHistoryDetailsProps) {
   const [activeTab, setActiveTab] = useState<"standings" | "payments">("standings");
   const settledPlayers = new Set(settledPlayersList);
-  const [viewMode, setViewMode] = useState<"simplified" | "advanced">(userIsAdmin ? "advanced" : "simplified");
 
   const [now, setNow] = useState<number | null>(null);
 
@@ -107,71 +101,39 @@ export default function GameHistoryDetails({
   };
 
   return (
-    <div className="flex flex-col gap-6 mb-8">
-      {/* Control Bar: Tabs & View Toggle */}
-      <div className="flex items-center justify-between gap-4 flex-wrap bg-black/20 border border-white/5 rounded-2xl p-2 shrink-0">
-        {/* Segmented Tab Switcher (Mobile Only) */}
-        <div className="lg:hidden p-1 bg-black/40 border border-white/10 rounded-xl inline-flex shrink-0">
-          <button
-            onClick={() => setActiveTab("standings")}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-black tracking-widest uppercase rounded-lg transition-all duration-200 ${
-              activeTab === "standings"
-                ? "bg-[#39FF14]/15 border border-[#39FF14]/40 text-[#39FF14] shadow-[0_0_12px_rgba(57,255,20,0.15)]"
-                : "border border-transparent text-white/40 hover:text-white"
-            }`}
-          >
-            <Crown size={14} />
-            Standings
-          </button>
-          <button
-            onClick={() => setActiveTab("payments")}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-black tracking-widest uppercase rounded-lg transition-all duration-200 ${
-              activeTab === "payments"
-                ? "bg-[#39FF14]/15 border border-[#39FF14]/40 text-[#39FF14] shadow-[0_0_12px_rgba(57,255,20,0.15)]"
-                : "border border-transparent text-white/40 hover:text-white"
-            }`}
-          >
-            <ArrowRightSquare size={14} />
-            Payments
-          </button>
-        </div>
-
-        {/* View Mode Switcher (Visible to all) */}
-        <div className="p-1 bg-black/40 border border-white/10 rounded-xl inline-flex ml-auto shrink-0">
-          <button
-            onClick={() => setViewMode("simplified")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-black tracking-widest uppercase rounded-lg transition-all duration-200 ${
-              viewMode === "simplified"
-                ? "bg-cyan-500/15 border border-cyan-400/40 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
-                : "border border-transparent text-white/40 hover:text-white"
-            }`}
-          >
-            Simplified
-          </button>
-          <button
-            onClick={() => setViewMode("advanced")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-black tracking-widest uppercase rounded-lg transition-all duration-200 ${
-              viewMode === "advanced"
-                ? "bg-cyan-500/15 border border-cyan-400/40 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
-                : "border border-transparent text-white/40 hover:text-white"
-            }`}
-          >
-            Advanced
-          </button>
-        </div>
-      </div>
-
-      {/* Responsive Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* STANDINGS SECTION */}
-        <div
-          className={`lg:col-span-2 flex flex-col gap-4 ${
-            activeTab === "standings" ? "block" : "hidden lg:block"
+    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col overflow-hidden mb-8 shadow-xl">
+      {/* Full-Width Segmented Tab Switcher (Evenly Split) */}
+      <div className="flex bg-black/35 border-b border-white/10 p-1 shrink-0 w-full">
+        <button
+          onClick={() => setActiveTab("standings")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs md:text-sm font-black tracking-widest uppercase rounded-xl transition-all duration-200 ${
+            activeTab === "standings"
+              ? "bg-[#39FF14]/15 border border-[#39FF14]/40 text-[#39FF14] shadow-[0_0_12px_rgba(57,255,20,0.15)]"
+              : "border border-transparent text-white/40 hover:text-white"
           }`}
         >
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 shadow-xl flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
+          <Crown size={16} />
+          Standings
+        </button>
+        <button
+          onClick={() => setActiveTab("payments")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs md:text-sm font-black tracking-widest uppercase rounded-xl transition-all duration-200 ${
+            activeTab === "payments"
+              ? "bg-[#39FF14]/15 border border-[#39FF14]/40 text-[#39FF14] shadow-[0_0_12px_rgba(57,255,20,0.15)]"
+              : "border border-transparent text-white/40 hover:text-white"
+          }`}
+        >
+          <ArrowRightSquare size={16} />
+          Payments
+        </button>
+      </div>
+
+      {/* Tab Contents */}
+      <div className="p-5 md:p-6 flex flex-col">
+        {activeTab === "standings" ? (
+          <div className="flex flex-col gap-5">
+            {/* Ranks Header */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-2">
               <div>
                 <h2 className="text-lg font-black tracking-wider uppercase text-white flex items-center gap-2">
                   <Crown className="text-yellow-400" size={20} />
@@ -183,7 +145,7 @@ export default function GameHistoryDetails({
 
             {/* Winner Podium (Top 3) */}
             {ranked.length > 0 && (
-              <div className="grid grid-cols-3 gap-3 mb-6 items-end pt-2 px-1">
+              <div className="grid grid-cols-3 gap-3 mb-4 items-end pt-2 px-1">
                 {/* 2nd Place */}
                 {ranked[1] && (
                   <div className="flex flex-col items-center text-center p-3 bg-white/[0.02] border border-white/5 rounded-2xl relative min-w-0">
@@ -274,41 +236,37 @@ export default function GameHistoryDetails({
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-sm text-white group-hover:text-[#39FF14] transition-colors truncate">{p.name}</p>
                         {/* Mobile view sub-stats */}
-                        {viewMode === "advanced" && (
-                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-white/40 font-semibold md:hidden">
-                            <span>In: {formatCurrency(p.buyIn)}</span>
-                            <span>·</span>
-                            <span>Out: {formatCurrency(p.cashOut)}</span>
-                            {p.food > 0 && (
-                              <>
-                                <span>·</span>
-                                <span className="text-yellow-400/80">Food: {formatCurrency(p.food)}</span>
-                              </>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-white/40 font-semibold md:hidden">
+                          <span>In: {formatCurrency(p.buyIn)}</span>
+                          <span>·</span>
+                          <span>Out: {formatCurrency(p.cashOut)}</span>
+                          {p.food > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="text-yellow-400/80">Food: {formatCurrency(p.food)}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     {/* Middle: Desktop view sub-stats */}
-                    {viewMode === "advanced" && (
-                      <div className="hidden md:flex items-center gap-6 text-right shrink-0">
-                        <div className="w-16">
-                          <span className="block text-[9px] font-bold text-white/30 uppercase tracking-wider">Buy-in</span>
-                          <span className="text-xs font-bold text-white/70 tabular-nums">{formatCurrency(p.buyIn)}</span>
-                        </div>
-                        <div className="w-16">
-                          <span className="block text-[9px] font-bold text-white/30 uppercase tracking-wider">Cash Out</span>
-                          <span className="text-xs font-bold text-white/70 tabular-nums">{formatCurrency(p.cashOut)}</span>
-                        </div>
-                        <div className="w-16">
-                          <span className="block text-[9px] font-bold text-white/30 uppercase tracking-wider">Food</span>
-                          <span className="text-xs font-bold text-yellow-400/70 tabular-nums">
-                            {p.food > 0 ? formatCurrency(p.food) : "—"}
-                          </span>
-                        </div>
+                    <div className="hidden md:flex items-center gap-6 text-right shrink-0">
+                      <div className="w-16">
+                        <span className="block text-[9px] font-bold text-white/30 uppercase tracking-wider">Buy-in</span>
+                        <span className="text-xs font-bold text-white/70 tabular-nums">{formatCurrency(p.buyIn)}</span>
                       </div>
-                    )}
+                      <div className="w-16">
+                        <span className="block text-[9px] font-bold text-white/30 uppercase tracking-wider">Cash Out</span>
+                        <span className="text-xs font-bold text-white/70 tabular-nums">{formatCurrency(p.cashOut)}</span>
+                      </div>
+                      <div className="w-16">
+                        <span className="block text-[9px] font-bold text-white/30 uppercase tracking-wider">Food</span>
+                        <span className="text-xs font-bold text-yellow-400/70 tabular-nums">
+                          {p.food > 0 ? formatCurrency(p.food) : "—"}
+                        </span>
+                      </div>
+                    </div>
 
                     {/* Right: Net profit badge */}
                     <div className="shrink-0 text-right w-20 md:w-24">
@@ -328,7 +286,7 @@ export default function GameHistoryDetails({
             </div>
 
             {/* Totals highlighted cards */}
-            <div className="grid grid-cols-3 gap-3 mt-6 pt-5 border-t border-white/10">
+            <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/10">
               <div className="bg-black/30 border border-white/5 rounded-xl p-3 text-center">
                 <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1">Buy-ins</p>
                 <p className="text-xs md:text-sm font-black text-white/80 tabular-nums">{formatCurrency(totalBuyIn)}</p>
@@ -345,17 +303,10 @@ export default function GameHistoryDetails({
               </div>
             </div>
           </div>
-        </div>
-
-        {/* PAYMENTS SECTION */}
-        <div
-          className={`lg:col-span-1 flex flex-col gap-4 ${
-            activeTab === "payments" ? "block" : "hidden lg:block"
-          }`}
-        >
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 shadow-xl flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5 flex-wrap gap-2">
+        ) : (
+          <div className="flex flex-col gap-5">
+            {/* Payments Header */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-2 flex-wrap gap-2">
               <div>
                 <h2 className="text-lg font-black tracking-wider uppercase text-white flex items-center gap-2">
                   <ArrowRightSquare className="text-cyan-400" size={20} />
@@ -370,216 +321,12 @@ export default function GameHistoryDetails({
               )}
             </div>
 
-            {(() => {
-              if (!loggedInPlayerName) return null;
-              const userLower = loggedInPlayerName.toLowerCase();
-              const playerInGame = game.players.find(p => p.name.toLowerCase() === userLower);
-              if (!playerInGame) return null;
-
-              const mySettlement = settlements.find(s => s.from.toLowerCase() === userLower);
-              const myPayout = payouts.find(p => p.to.toLowerCase() === userLower);
-              const isSettled = settledPlayers.has(userLower);
-
-              if (mySettlement) {
-                const receiverHandles = getHandlesFor(paymentHandles, mySettlement.to);
-                const providers = activeProviders(receiverHandles);
-                return (
-                  <div className={`p-4 rounded-xl border mb-5 flex flex-col gap-3 transition-all ${
-                    isSettled
-                      ? "bg-[#39FF14]/5 border-[#39FF14]/20 shadow-[0_0_15px_rgba(57,255,20,0.02)]"
-                      : "bg-red-500/5 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.02)]"
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      {isSettled ? (
-                        <Check className="text-[#39FF14]" size={16} />
-                      ) : (
-                        <AlertTriangle className="text-red-400" size={16} />
-                      )}
-                      <p className="text-xs font-black uppercase tracking-wider text-white">
-                        Your Settlement
-                      </p>
-                    </div>
-                    <div>
-                      {isSettled ? (
-                        <p className="text-xs text-white/70">
-                          You are fully settled! Your payment of{" "}
-                          <span className="font-bold text-[#39FF14]">{formatCurrency(mySettlement.pence / 100)}</span> was marked as paid.
-                        </p>
-                      ) : (
-                        <p className="text-xs text-white/70">
-                          You owe <span className="text-red-400 font-bold">{mySettlement.to}</span> a total of{" "}
-                          <span className="font-bold text-red-400">{formatCurrency(mySettlement.pence / 100)}</span>. Please settle up:
-                        </p>
-                      )}
-                    </div>
-                    {!isSettled && providers.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
-                        {providers.map((provider) => {
-                          const href = buildPaymentLink(provider, receiverHandles[provider], mySettlement.pence);
-                          if (!href) return null;
-                          return (
-                            <a
-                              key={provider}
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center px-2 py-1 rounded text-[8px] font-black tracking-widest uppercase border border-white/10 hover:border-white/20 text-white/60 hover:text-white bg-black/40 transition-colors"
-                            >
-                              {PROVIDER_LABEL[provider]}
-                            </a>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              if (myPayout) {
-                return (
-                  <div className={`p-4 rounded-xl border mb-5 flex flex-col gap-2 transition-all ${
-                    isSettled
-                      ? "bg-[#39FF14]/5 border-[#39FF14]/20"
-                      : "bg-cyan-500/5 border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.02)]"
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      {isSettled ? (
-                        <Check className="text-[#39FF14]" size={16} />
-                      ) : (
-                        <Info className="text-cyan-400" size={16} />
-                      )}
-                      <p className="text-xs font-black uppercase tracking-wider text-white">
-                        Your Settlement
-                      </p>
-                    </div>
-                    <p className="text-xs text-white/70">
-                      {isSettled ? (
-                        <>
-                          You have been paid! Admin settled your payout of{" "}
-                          <span className="font-bold text-[#39FF14]">{formatCurrency(myPayout.pence / 100)}</span>.
-                        </>
-                      ) : (
-                        <>
-                          Admin owes you{" "}
-                          <span className="font-bold text-cyan-400">{formatCurrency(myPayout.pence / 100)}</span>. Your payout is pending.
-                        </>
-                      )}
-                    </p>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="p-4 rounded-xl border border-white/10 bg-white/[0.02] mb-5 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <Check className="text-[#39FF14]" size={16} />
-                    <p className="text-xs font-black uppercase tracking-wider text-white">
-                      Your Settlement
-                    </p>
-                  </div>
-                  <p className="text-xs text-white/70">You are all square for this session!</p>
-                </div>
-              );
-            })()}
-
             {settlements.length === 0 && payouts.length === 0 ? (
               <p className="text-sm text-white/40 py-8 text-center bg-black/10 border border-dashed border-white/15 rounded-xl">
                 No payments required for this session
               </p>
-            ) : viewMode === "simplified" ? (
-              <div className="flex flex-col gap-5">
-                {/* Incoming (Owed to Admin) */}
-                {settlements.length > 0 && (
-                  <div className="flex flex-col gap-2.5">
-                    <h3 className="text-[10px] font-black tracking-wider uppercase text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                      <TrendingDown size={12} className="shrink-0" />
-                      Incoming Settlements
-                    </h3>
-                    <div className="flex flex-col gap-2">
-                      {settlements.map((s, i) => {
-                        const meta = settlementMetaFor(s.from);
-                        return (
-                          <div
-                            key={`owe-simple-${i}`}
-                            className="bg-white/[0.01] border border-white/5 rounded-xl px-3 py-2 flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <PlayerAvatar
-                                name={s.from}
-                                avatarUrl={avatarMap[s.from]}
-                                size={24}
-                                className="rounded-full border border-white/10 shrink-0"
-                              />
-                              <span className="text-xs font-bold text-white/80 truncate">{s.from}</span>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs font-bold text-red-400/80 tabular-nums">
-                                {formatCurrency(s.pence / 100)}
-                              </span>
-                              {meta ? (
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-[#39FF14] bg-[#39FF14]/10 border border-[#39FF14]/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                  <Check size={8} /> Paid
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-white/30 bg-white/5 border border-white/5 px-1.5 py-0.5 rounded">
-                                  Owing
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Outgoing (Admin Payouts) */}
-                {payouts.length > 0 && (
-                  <div className="flex flex-col gap-2.5">
-                    <h3 className="text-[10px] font-black tracking-wider uppercase text-[#39FF14] bg-[#39FF14]/10 border border-[#39FF14]/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                      <TrendingUp size={12} className="shrink-0" />
-                      Outgoing Payouts
-                    </h3>
-                    <div className="flex flex-col gap-2">
-                      {payouts.map((p, i) => {
-                        const meta = settlementMetaFor(p.to);
-                        return (
-                          <div
-                            key={`pay-simple-${i}`}
-                            className="bg-white/[0.01] border border-white/5 rounded-xl px-3 py-2 flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <PlayerAvatar
-                                name={p.to}
-                                avatarUrl={avatarMap[p.to]}
-                                size={24}
-                                className="rounded-full border border-white/10 shrink-0"
-                              />
-                              <span className="text-xs font-bold text-white/80 truncate">{p.to}</span>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs font-bold text-[#39FF14]/80 tabular-nums">
-                                {formatCurrency(p.pence / 100)}
-                              </span>
-                              {meta ? (
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-[#39FF14] bg-[#39FF14]/10 border border-[#39FF14]/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                  <Check size={8} /> Paid
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-white/30 bg-white/5 border border-white/5 px-1.5 py-0.5 rounded">
-                                  Pending
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
             ) : (
-              <div className="flex flex-col gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Incoming (Owed to Admin) */}
                 <div className="flex flex-col gap-3">
                   <h3 className="text-[10px] font-black tracking-wider uppercase text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
@@ -792,7 +539,7 @@ export default function GameHistoryDetails({
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
