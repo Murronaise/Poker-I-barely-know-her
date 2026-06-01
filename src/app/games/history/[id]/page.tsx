@@ -9,6 +9,8 @@ import {
   ArrowRightSquare,
   Crown,
   Users,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import CollapsibleSection from "@/components/CollapsibleSection";
@@ -381,166 +383,187 @@ export default async function HistoricalGamePage({
               <WhatsAppSettlementButton game={game} />
             </div>
           )}
-          {settlements.length === 0 && payouts.length === 0 && (
-            <p className="text-sm text-white/40 py-4 text-center">No settlement required</p>
-          )}
-
-          {settlements.map((s, i) => {
-            // The debtor pays the receiver, so we surface the receiver's
-            // payment handles. Pre-fill the amount so a tap lands on a
-            // payment screen with the right number already typed.
-            const receiverHandles = getHandlesFor(paymentHandles, s.to);
-            const providers = activeProviders(receiverHandles);
-            const meta = settlementMetaFor(s.from);
-            return (
-            <div
-              key={`owe-${i}`}
-              className="bg-black/40 border border-red-400/20 rounded-xl p-3.5 flex flex-col gap-3"
-            >
-              {/* Top Row: Avatar & Debtor Info + Amount */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
-                  <div className="min-w-0 flex-1 flex flex-col">
-                    <p className="text-sm font-bold text-white truncate">{s.from}</p>
-                    <p className="text-xs text-red-400/80 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
-                    {meta && (
-                      <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
-                        Paid {relativeTime(meta.settledAt)}
-                        {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <p className="text-xl font-black text-red-400 tabular-nums shrink-0">
-                  £{(s.pence / 100).toFixed(2)}
-                </p>
-              </div>
-
-              {/* Separator line */}
-              <div className="h-px bg-white/5" />
-
-              {/* Bottom Row: Breakdown + Settle button */}
-              <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
-                <p className="text-xs text-white/50 tabular-nums">
-                  {[
-                    s.buyInPence > 0 ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}` : null,
-                    s.cashOutPence > 0 ? `Cash-out £${(s.cashOutPence / 100).toFixed(2)}` : null,
-                    s.foodPence > 0 ? `Food £${(s.foodPence / 100).toFixed(2)}` : null,
-                  ].filter(Boolean).join(" · ")}
-                </p>
-                <div className="shrink-0">
-                  <SettlementSettleButton
-                    gameId={game.id}
-                    playerName={s.from}
-                    isAdmin={userIsAdmin}
-                    initialSettled={settledPlayers.has(s.from.toLowerCase())}
-                  />
-                </div>
-              </div>
-
-              {providers.length > 0 && !meta && (
-                <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
-                    Pay {s.to}:
-                  </span>
-                  {providers.map((provider) => {
-                    const href = buildPaymentLink(provider, receiverHandles[provider], s.pence);
-                    if (!href) return null;
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Incoming (Owed to Admin) */}
+            <div className="flex flex-col gap-3">
+              <h3 className="text-xs font-black tracking-wider uppercase text-red-400 pb-2 border-b border-red-500/10 flex items-center gap-2">
+                <TrendingDown size={14} className="shrink-0" />
+                Incoming (Owed to Admin)
+              </h3>
+              {settlements.length === 0 ? (
+                <p className="text-xs text-white/30 py-4 text-center">No incoming payments pending</p>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {settlements.map((s, i) => {
+                    const receiverHandles = getHandlesFor(paymentHandles, s.to);
+                    const providers = activeProviders(receiverHandles);
+                    const meta = settlementMetaFor(s.from);
                     return (
-                      <a
-                        key={provider}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
+                      <div
+                        key={`owe-${i}`}
+                        className="bg-black/40 border border-red-400/20 rounded-xl p-3.5 flex flex-col gap-3"
                       >
-                        {PROVIDER_LABEL[provider]}
-                      </a>
+                        {/* Top Row: Avatar & Debtor Info + Amount */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <PlayerAvatar name={s.from} avatarUrl={avatarMap[s.from]} size={40} className="rounded-full border border-red-400/30 shrink-0" />
+                            <div className="min-w-0 flex-1 flex flex-col">
+                              <p className="text-sm font-bold text-white truncate">{s.from}</p>
+                              <p className="text-xs text-red-400/80 uppercase tracking-widest font-semibold truncate">owes {s.to}</p>
+                              {meta && (
+                                <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
+                                  Paid {relativeTime(meta.settledAt)}
+                                  {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xl font-black text-red-400 tabular-nums shrink-0">
+                            £{(s.pence / 100).toFixed(2)}
+                          </p>
+                        </div>
+
+                        {/* Separator line */}
+                        <div className="h-px bg-white/5" />
+
+                        {/* Bottom Row: Breakdown + Settle button */}
+                        <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                          <p className="text-xs text-white/50 tabular-nums">
+                            {[
+                              s.buyInPence > 0 ? `Buy-in £${(s.buyInPence / 100).toFixed(2)}` : null,
+                              s.cashOutPence > 0 ? `Cash-out £${(s.cashOutPence / 100).toFixed(2)}` : null,
+                              s.foodPence > 0 ? `Food £${(s.foodPence / 100).toFixed(2)}` : null,
+                            ].filter(Boolean).join(" · ")}
+                          </p>
+                          <div className="shrink-0">
+                            <SettlementSettleButton
+                              gameId={game.id}
+                              playerName={s.from}
+                              isAdmin={userIsAdmin}
+                              initialSettled={settledPlayers.has(s.from.toLowerCase())}
+                            />
+                          </div>
+                        </div>
+
+                        {providers.length > 0 && !meta && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
+                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
+                              Pay {s.to}:
+                            </span>
+                            {providers.map((provider) => {
+                              const href = buildPaymentLink(provider, receiverHandles[provider], s.pence);
+                              if (!href) return null;
+                              return (
+                                <a
+                                  key={provider}
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
+                                >
+                                  {PROVIDER_LABEL[provider]}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               )}
             </div>
-            );
-          })}
 
-          {payouts.map((p, i) => {
-            const receiverHandles = getHandlesFor(paymentHandles, p.to);
-            const providers = activeProviders(receiverHandles);
-            const meta = settlementMetaFor(p.to);
-            return (
-            <div
-              key={`pay-${i}`}
-              className="bg-black/40 border border-[#39FF14]/20 rounded-xl p-3.5 flex flex-col gap-3"
-            >
-              {/* Top Row: Avatar & Receiver Info + Amount */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
-                  <div className="min-w-0 flex-1 flex flex-col">
-                    <p className="text-sm font-bold text-white truncate">{p.to}</p>
-                    <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
-                    {meta && (
-                      <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
-                        Paid {relativeTime(meta.settledAt)}
-                        {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <p className="text-xl font-black text-[#39FF14] tabular-nums shrink-0">
-                  £{(p.pence / 100).toFixed(2)}
-                </p>
-              </div>
-
-              {/* Separator line */}
-              <div className="h-px bg-white/5" />
-
-              {/* Bottom Row: Breakdown + Settle button */}
-              <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
-                <p className="text-xs text-white/50 tabular-nums">
-                  {[
-                    p.buyInPence > 0 ? `Buy-in £${(p.buyInPence / 100).toFixed(2)}` : null,
-                    p.cashOutPence > 0 ? `Cash-out £${(p.cashOutPence / 100).toFixed(2)}` : null,
-                    p.foodPence > 0 ? `Food £${(p.foodPence / 100).toFixed(2)}` : null,
-                  ].filter(Boolean).join(" · ")}
-                </p>
-                <div className="shrink-0">
-                  <SettlementSettleButton
-                    gameId={game.id}
-                    playerName={p.to}
-                    isAdmin={userIsAdmin}
-                    initialSettled={settledPlayers.has(p.to.toLowerCase())}
-                  />
-                </div>
-              </div>
-
-              {providers.length > 0 && !meta && (
-                <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
-                    Pay {p.to}:
-                  </span>
-                  {providers.map((provider) => {
-                    const href = buildPaymentLink(provider, receiverHandles[provider], p.pence);
-                    if (!href) return null;
+            {/* Outgoing (Admin Payouts) */}
+            <div className="flex flex-col gap-3">
+              <h3 className="text-xs font-black tracking-wider uppercase text-[#39FF14] pb-2 border-b border-[#39FF14]/10 flex items-center gap-2">
+                <TrendingUp size={14} className="shrink-0" />
+                Outgoing (Admin Payouts)
+              </h3>
+              {payouts.length === 0 ? (
+                <p className="text-xs text-white/30 py-4 text-center">No outgoing payouts pending</p>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {payouts.map((p, i) => {
+                    const receiverHandles = getHandlesFor(paymentHandles, p.to);
+                    const providers = activeProviders(receiverHandles);
+                    const meta = settlementMetaFor(p.to);
                     return (
-                      <a
-                        key={provider}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
+                      <div
+                        key={`pay-${i}`}
+                        className="bg-black/40 border border-[#39FF14]/20 rounded-xl p-3.5 flex flex-col gap-3"
                       >
-                        {PROVIDER_LABEL[provider]}
-                      </a>
+                        {/* Top Row: Avatar & Receiver Info + Amount */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <PlayerAvatar name={p.to} avatarUrl={avatarMap[p.to]} size={40} className="rounded-full border border-[#39FF14]/30 shrink-0" />
+                            <div className="min-w-0 flex-1 flex flex-col">
+                              <p className="text-sm font-bold text-white truncate">{p.to}</p>
+                              <p className="text-xs text-[#39FF14]/80 uppercase tracking-widest font-semibold truncate">receives from {p.from}</p>
+                              {meta && (
+                                <p className="text-[10px] text-[#39FF14]/80 tracking-wider truncate" title={new Date(meta.settledAt).toLocaleString()}>
+                                  Paid {relativeTime(meta.settledAt)}
+                                  {meta.settledByName ? ` · by ${meta.settledByName}` : ""}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xl font-black text-[#39FF14] tabular-nums shrink-0">
+                            £{(p.pence / 100).toFixed(2)}
+                          </p>
+                        </div>
+
+                        {/* Separator line */}
+                        <div className="h-px bg-white/5" />
+
+                        {/* Bottom Row: Breakdown + Settle button */}
+                        <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                          <p className="text-xs text-white/50 tabular-nums">
+                            {[
+                              p.buyInPence > 0 ? `Buy-in £${(p.buyInPence / 100).toFixed(2)}` : null,
+                              p.cashOutPence > 0 ? `Cash-out £${(p.cashOutPence / 100).toFixed(2)}` : null,
+                              p.foodPence > 0 ? `Food £${(p.foodPence / 100).toFixed(2)}` : null,
+                            ].filter(Boolean).join(" · ")}
+                          </p>
+                          <div className="shrink-0">
+                            <SettlementSettleButton
+                              gameId={game.id}
+                              playerName={p.to}
+                              isAdmin={userIsAdmin}
+                              initialSettled={settledPlayers.has(p.to.toLowerCase())}
+                            />
+                          </div>
+                        </div>
+
+                        {providers.length > 0 && !meta && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-white/5">
+                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 mr-1">
+                              Pay {p.to}:
+                            </span>
+                            {providers.map((provider) => {
+                              const href = buildPaymentLink(provider, receiverHandles[provider], p.pence);
+                              if (!href) return null;
+                              return (
+                                <a
+                                  key={provider}
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border transition-colors bg-gradient-to-br ${PROVIDER_ACCENT[provider]}`}
+                                >
+                                  {PROVIDER_LABEL[provider]}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               )}
             </div>
-            );
-          })}
+          </div>
         </div>
       </CollapsibleSection>
     </main>
