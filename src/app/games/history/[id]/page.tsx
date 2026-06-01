@@ -36,6 +36,15 @@ export default async function HistoricalGamePage({
   if (!game) notFound();
   const { data: { user } } = await sb.auth.getUser();
   const userIsAdmin = await isAdminDb(sb, user?.email);
+  let loggedInPlayerName: string | null = null;
+  if (user) {
+    const { data: userProfile } = await sb
+      .from("users")
+      .select("player_name")
+      .eq("user_id", user.id)
+      .single();
+    loggedInPlayerName = userProfile?.player_name ?? null;
+  }
   const settlementRecords = await fetchSettlementRecords(sb, game.id);
   // Set form used by the existing settled-state checks; the Map form is
   // used to render "paid {time} by {who}" alongside each tick.
@@ -223,6 +232,7 @@ export default async function HistoricalGamePage({
         settlementRecordsRaw={Object.fromEntries(settlementRecords)}
         totalBuyIn={totalBuyIn}
         totalFood={totalFood}
+        loggedInPlayerName={loggedInPlayerName}
       />
     </main>
   );
