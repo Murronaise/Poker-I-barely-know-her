@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
@@ -6,6 +7,7 @@ import Footer from "@/components/Footer";
 import MotionProvider from "@/components/MotionProvider";
 import PollLoginPrompt from "@/components/PollLoginPrompt";
 import VisitTracker from "@/components/VisitTracker";
+import AuthErrorTracker from "@/components/AuthErrorTracker";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import "./globals.css";
 
@@ -76,6 +78,9 @@ export default function RootLayout({
           <Toaster theme="dark" position="top-center" richColors />
           <PollLoginPrompt />
           <VisitTracker />
+          <Suspense fallback={null}>
+            <AuthErrorTracker />
+          </Suspense>
           <ServiceWorkerRegistration />
         </MotionProvider>
       </body>
