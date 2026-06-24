@@ -120,6 +120,7 @@ export default function SignupPage() {
         email: email.trim(),
         password,
         options: {
+          emailRedirectTo: `${window.location.origin}/login`,
           data: {
             player_name: trimmedName,
           },
