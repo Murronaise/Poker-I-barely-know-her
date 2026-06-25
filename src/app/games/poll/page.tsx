@@ -419,30 +419,30 @@ function DayCell({ date, iso, option, tally, myVote, users, onToggleVote }: { da
       const yesUsers = tally?.voters.yes.map(uid => users[uid] || { player_name: "Unknown", avatar_url: null }) || [];
       
       toast.custom((t) => (
-        <div className="bg-[#1a1f29] border border-[#39FF14]/30 rounded-xl p-4 shadow-xl text-white w-full min-w-[200px] max-w-[280px]">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Users size={18} className="text-[#39FF14]" />
-              <h4 className="font-black tracking-widest uppercase text-[#39FF14] text-lg">Players</h4>
+        <div className="bg-[#1a1f29] border border-[#39FF14]/30 rounded-2xl p-6 shadow-2xl text-white w-full min-w-[240px] max-w-[340px]">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <Users size={24} className="text-[#39FF14]" />
+              <h4 className="font-black tracking-widest uppercase text-[#39FF14] text-2xl">Players</h4>
             </div>
           </div>
-          <div className="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+          <div className="flex flex-col gap-4 max-h-72 overflow-y-auto pr-2">
             {yesUsers.length > 0 ? (
               yesUsers.map((u, i) => (
-                <div key={i} className="flex items-center gap-3">
+                <div key={i} className="flex items-center gap-4">
                   {u.avatar_url ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={u.avatar_url} alt={u.player_name} className="w-8 h-8 rounded-full object-cover border border-white/10 bg-white/5" />
+                    <img src={u.avatar_url} alt={u.player_name} className="w-12 h-12 rounded-full object-cover border border-white/10 bg-white/5 shadow-md" />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center border border-white/10">
-                      <span className="text-xs font-bold text-white/50">{u.player_name.charAt(0).toUpperCase()}</span>
+                    <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center border border-white/10 shadow-md">
+                      <span className="text-lg font-black text-white/60">{u.player_name.charAt(0).toUpperCase()}</span>
                     </div>
                   )}
-                  <span className="text-base font-semibold">{u.player_name}</span>
+                  <span className="text-xl font-bold tracking-tight">{u.player_name}</span>
                 </div>
               ))
             ) : (
-              <span className="text-white/50 text-sm italic">No votes yet</span>
+              <span className="text-white/50 text-lg italic">No votes yet</span>
             )}
           </div>
         </div>
