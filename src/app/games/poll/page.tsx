@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -400,6 +400,119 @@ function TopSummaryBanner({ poll, tallies, users }: { poll: PollWithDetails, tal
   );
 }
 
+// --- Day Cell ---
+function DayCell({ date, iso, option, tally, myVote, users, onToggleVote }: { date: Date, iso: string, option: PollOption | undefined, tally: OptionTally | null | undefined, myVote: string | null | undefined, users: UserMap, onToggleVote: (id: string) => void }) {
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!option) return;
+    isLongPressRef.current = false;
+    timerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      const yesVoters = tally?.voters.yes.map(uid => users[uid]?.player_name || "Unknown").join(", ") || "";
+      
+      toast(option.label, {
+        description: yesVoters ? `Yes: ${yesVoters}` : "No votes yet",
+        icon: <Users size={16} className="text-[#39FF14]" />,
+        duration: 4000,
+      });
+
+      if (window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+    }, 500);
+  };
+
+  const handlePointerUp = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (isLongPressRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (option) onToggleVote(option.id);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (option) e.preventDefault();
+  };
+
+  let btnClass = "aspect-square rounded-lg flex flex-col items-center justify-center relative transition-all border text-sm font-semibold ";
+  
+  if (option) {
+    if (myVote === "yes") {
+      if (option.is_bank_holiday) {
+        btnClass += "border-yellow-400 bg-yellow-400 text-black hover:bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] cursor-pointer";
+      } else {
+        btnClass += "border-[#39FF14] bg-[#39FF14] text-black hover:bg-[#32e612] shadow-[0_0_15px_rgba(57,255,20,0.4)] cursor-pointer";
+      }
+    } else {
+      if (option.is_bank_holiday) {
+        btnClass += "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:border-yellow-400 hover:shadow-[0_0_10px_rgba(234,179,8,0.3)] cursor-pointer";
+      } else {
+        btnClass += "border-[#39FF14]/30 bg-[#39FF14]/5 text-[#39FF14] hover:border-[#39FF14] hover:shadow-[0_0_10px_rgba(57,255,20,0.3)] cursor-pointer";
+      }
+    }
+  } else {
+    btnClass += "border-transparent text-white/30 cursor-default";
+  }
+
+  const isPast = date < new Date(new Date().setHours(0,0,0,0));
+  if (isPast && option) {
+    if (myVote === "yes") {
+      btnClass = btnClass.replace("border-[#39FF14]", "border-white/20").replace("bg-[#39FF14]", "bg-white/20").replace("text-black", "text-white").replace("shadow-[0_0_15px_rgba(57,255,20,0.4)]", "");
+      btnClass = btnClass.replace("border-yellow-400", "border-white/20").replace("bg-yellow-400", "bg-white/20").replace("text-black", "text-white").replace("shadow-[0_0_15px_rgba(234,179,8,0.4)]", "");
+    } else {
+      btnClass = btnClass.replace("border-[#39FF14]/30", "border-white/10").replace("bg-[#39FF14]/5", "bg-black/20").replace("text-[#39FF14]", "text-white/40");
+      btnClass = btnClass.replace("border-yellow-500/40", "border-white/10").replace("bg-yellow-500/10", "bg-black/20").replace("text-yellow-400", "text-white/40");
+    }
+  }
+
+  const yesVoters = tally?.voters.yes.map(uid => users[uid]?.player_name || "Unknown").join(", ") || "";
+  let tooltip = "";
+  if (option) {
+    tooltip = `${option.label}`;
+    if (yesVoters) tooltip += `\nYes: ${yesVoters}`;
+    else tooltip += `\nNo votes yet`;
+  }
+
+  return (
+    <button
+      className={btnClass + " select-none touch-manipulation"}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      disabled={!option}
+      title={tooltip}
+      style={{ WebkitTouchCallout: "none" }}
+    >
+      <span>{date.getDate()}</span>
+      {tally && tally.yes > 0 && myVote !== "yes" && (
+        <div className="absolute bottom-1 w-full flex justify-center gap-0.5">
+          <span className={`text-[10px] leading-none font-bold ${option?.is_bank_holiday ? 'text-yellow-400' : 'text-[#39FF14]'}`}>
+            {tally.yes}
+          </span>
+        </div>
+      )}
+      {tally && tally.yes > 0 && myVote === "yes" && (
+        <div className="absolute bottom-1 w-full flex justify-center gap-0.5">
+          <span className="text-[10px] leading-none font-bold text-black/60">
+            {tally.yes}
+          </span>
+        </div>
+      )}
+    </button>
+  );
+}
+
 // --- Month Grid ---
 function MonthGrid({ year, month, poll, tallies, users, myUserId, onToggleVote }: { year: number, month: number, poll: PollWithDetails, tallies: Map<string, OptionTally>, users: UserMap, myUserId?: string, onToggleVote: (optionId: string) => void }) {
   const monthName = new Date(year, month, 1).toLocaleDateString("en-GB", { month: "long" });
@@ -436,72 +549,17 @@ function MonthGrid({ year, month, poll, tallies, users, myUserId, onToggleVote }
           const option = poll.options.find(o => o.game_date === iso);
           const tally = option ? tallies.get(option.id) : null;
           const myVote = (myUserId && option) ? poll.rsvps.find(r => r.poll_option_id === option.id && r.user_id === myUserId)?.response : null;
-          
-          let btnClass = "aspect-square rounded-lg flex flex-col items-center justify-center relative transition-all border text-sm font-semibold ";
-          
-          if (option) {
-            // Playable day
-            if (myVote === "yes") {
-              if (option.is_bank_holiday) {
-                btnClass += "border-yellow-400 bg-yellow-400 text-black hover:bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] cursor-pointer";
-              } else {
-                btnClass += "border-[#39FF14] bg-[#39FF14] text-black hover:bg-[#32e612] shadow-[0_0_15px_rgba(57,255,20,0.4)] cursor-pointer";
-              }
-            } else {
-              if (option.is_bank_holiday) {
-                btnClass += "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:border-yellow-400 hover:shadow-[0_0_10px_rgba(234,179,8,0.3)] cursor-pointer";
-              } else {
-                btnClass += "border-[#39FF14]/30 bg-[#39FF14]/5 text-[#39FF14] hover:border-[#39FF14] hover:shadow-[0_0_10px_rgba(57,255,20,0.3)] cursor-pointer";
-              }
-            }
-          } else {
-            // Regular unplayable day
-            btnClass += "border-transparent text-white/30 cursor-default";
-          }
-
-          const isPast = date < new Date(new Date().setHours(0,0,0,0));
-          if (isPast && option) {
-            if (myVote === "yes") {
-              btnClass = btnClass.replace("border-[#39FF14]", "border-white/20").replace("bg-[#39FF14]", "bg-white/20").replace("text-black", "text-white").replace("shadow-[0_0_15px_rgba(57,255,20,0.4)]", "");
-              btnClass = btnClass.replace("border-yellow-400", "border-white/20").replace("bg-yellow-400", "bg-white/20").replace("text-black", "text-white").replace("shadow-[0_0_15px_rgba(234,179,8,0.4)]", "");
-            } else {
-              btnClass = btnClass.replace("border-[#39FF14]/30", "border-white/10").replace("bg-[#39FF14]/5", "bg-black/20").replace("text-[#39FF14]", "text-white/40");
-              btnClass = btnClass.replace("border-yellow-500/40", "border-white/10").replace("bg-yellow-500/10", "bg-black/20").replace("text-yellow-400", "text-white/40");
-            }
-          }
-
-          const yesVoters = tally?.voters.yes.map(uid => users[uid]?.player_name || "Unknown").join(", ") || "";
-          let tooltip = "";
-          if (option) {
-            tooltip = `${option.label}`;
-            if (yesVoters) tooltip += `\nYes: ${yesVoters}`;
-            else tooltip += `\nNo votes yet`;
-          }
-
           return (
-            <button
+            <DayCell
               key={iso}
-              className={btnClass}
-              onClick={() => option && onToggleVote(option.id)}
-              disabled={!option}
-              title={tooltip}
-            >
-              <span>{date.getDate()}</span>
-              {tally && tally.yes > 0 && myVote !== "yes" && (
-                <div className="absolute bottom-1 w-full flex justify-center gap-0.5">
-                  <span className={`text-[10px] leading-none font-bold ${option?.is_bank_holiday ? 'text-yellow-400' : 'text-[#39FF14]'}`}>
-                    {tally.yes}
-                  </span>
-                </div>
-              )}
-              {tally && tally.yes > 0 && myVote === "yes" && (
-                <div className="absolute bottom-1 w-full flex justify-center gap-0.5">
-                  <span className="text-[10px] leading-none font-bold text-black/60">
-                    {tally.yes}
-                  </span>
-                </div>
-              )}
-            </button>
+              date={date}
+              iso={iso}
+              option={option}
+              tally={tally}
+              myVote={myVote}
+              users={users}
+              onToggleVote={onToggleVote}
+            />
           );
         })}
       </div>
