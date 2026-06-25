@@ -34,6 +34,7 @@ export const changelog: ChangelogEntry[] = [
       { category: "Scheduling", type: "feature", text: "The yearly calendar is now a rolling 6-month 'Rolling Poll'. It automatically shows exactly six months ahead, cleanly spanning year boundaries." },
       { category: "Scheduling", type: "improvement", text: "Voting is now a binary 'Yes' toggle. 'Maybe' and 'No' options have been removed for simplicity." },
       { category: "Scheduling", type: "improvement", text: "The upcoming games banner now lists the actual names of the players who have RSVP'd yes." },
+      { category: "Scheduling", type: "fix", text: "Fixed an issue where RSVP'd players were sometimes displayed as 'Unknown'." },
       { category: "Scheduling", type: "improvement", text: "Admins are now proactively prompted to initialize new years when the rolling window starts looking into uninitialized territory.", adminOnly: true },
     ],
   },
