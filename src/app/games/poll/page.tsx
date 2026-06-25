@@ -59,10 +59,11 @@ export default function PollsCalendarPage() {
 
       const pollIds = pollsData.map(p => p.id);
 
-      const [{ data: optionsData }, { data: rsvpsData }, { data: usersData }] = await Promise.all([
+      const [{ data: optionsData }, { data: rsvpsData }, { data: usersData }, { data: playersData }] = await Promise.all([
         supabase.from("poll_options").select("*").in("poll_id", pollIds).order("game_date"),
         supabase.from("rsvps").select("*").in("poll_id", pollIds),
         supabase.from("users").select("user_id, player_name"),
+        supabase.from("players").select("name, avatar_url"),
       ]);
 
       setPollsAggregated({
@@ -73,8 +74,13 @@ export default function PollsCalendarPage() {
       });
 
       const map: UserMap = {};
+      const playerAvatars: Record<string, string | null> = {};
+      (playersData ?? []).forEach((p: { name: string; avatar_url: string | null }) => {
+        playerAvatars[p.name] = p.avatar_url;
+      });
+
       (usersData ?? []).forEach((u: { user_id: string; player_name: string }) => {
-        map[u.user_id] = { player_name: u.player_name, avatar_url: null };
+        map[u.user_id] = { player_name: u.player_name, avatar_url: playerAvatars[u.player_name] || null };
       });
       setUsers(map);
     } catch (err) {
@@ -410,13 +416,37 @@ function DayCell({ date, iso, option, tally, myVote, users, onToggleVote }: { da
     isLongPressRef.current = false;
     timerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
-      const yesVoters = tally?.voters.yes.map(uid => users[uid]?.player_name || "Unknown").join(", ") || "";
+      const yesUsers = tally?.voters.yes.map(uid => users[uid] || { player_name: "Unknown", avatar_url: null }) || [];
       
-      toast(option.label, {
-        description: yesVoters ? `Yes: ${yesVoters}` : "No votes yet",
-        icon: <Users size={16} className="text-[#39FF14]" />,
-        duration: 4000,
-      });
+      toast.custom((t) => (
+        <div className="bg-[#1a1f29] border border-[#39FF14]/30 rounded-xl p-4 shadow-xl text-white w-full min-w-[200px] max-w-[280px]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Users size={18} className="text-[#39FF14]" />
+              <h4 className="font-black tracking-widest uppercase text-[#39FF14] text-lg">Players</h4>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+            {yesUsers.length > 0 ? (
+              yesUsers.map((u, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  {u.avatar_url ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={u.avatar_url} alt={u.player_name} className="w-8 h-8 rounded-full object-cover border border-white/10 bg-white/5" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center border border-white/10">
+                      <span className="text-xs font-bold text-white/50">{u.player_name.charAt(0).toUpperCase()}</span>
+                    </div>
+                  )}
+                  <span className="text-base font-semibold">{u.player_name}</span>
+                </div>
+              ))
+            ) : (
+              <span className="text-white/50 text-sm italic">No votes yet</span>
+            )}
+          </div>
+        </div>
+      ), { duration: 4000 });
 
       if (window.navigator && window.navigator.vibrate) {
         window.navigator.vibrate(50);
