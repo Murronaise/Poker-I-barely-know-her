@@ -52,6 +52,11 @@ export default function PollDetailPage({
       return;
     }
 
+    if (pollData.notes && (pollData.notes as string).includes("Yearly Calendar")) {
+      router.replace("/games/poll");
+      return;
+    }
+
     setPoll({
       ...(pollData as Poll),
       options: (optionsData as PollOption[]) ?? [],

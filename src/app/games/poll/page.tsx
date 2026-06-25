@@ -1,61 +1,88 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronLeft, Calendar, Plus, Lock, Crown, Users, AlertTriangle,
+  ChevronLeft, Calendar as CalendarIcon, ChevronRight, Lock, ShieldAlert,
+  Check, X, HelpCircle, Users, Trophy
 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isAdmin } from "@/lib/auth";
-import { Poll, PollOption, Rsvp, tallyPoll } from "@/lib/polls";
+import { Poll, PollOption, Rsvp, PollWithDetails, RsvpResponse, OptionTally, tallyPoll, nextMonthlyBoundaryPair } from "@/lib/polls";
+import { toast } from "sonner";
 
-type PollWithCounts = Poll & {
-  options: PollOption[];
-  rsvps: Rsvp[];
-};
+type UserMap = Record<string, { player_name: string; avatar_url: string | null }>;
 
-export default function PollsListPage() {
+export default function PollsCalendarPage() {
   const supabase = createSupabaseBrowserClient();
 
-  const [polls, setPolls] = useState<PollWithCounts[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [iAmAdmin, setIAmAdmin] = useState(false);
+  const [baseDate, setBaseDate] = useState(() => {
+    const d = new Date();
+    d.setHours(0,0,0,0);
+    d.setDate(1);
+    return d;
+  });
+  const [pollsAggregated, setPollsAggregated] = useState<PollWithDetails | null>(null);
+  const [missingYears, setMissingYears] = useState<number[]>([]);
+  const [users, setUsers] = useState<UserMap>({});
   const [me, setMe] = useState<{ id: string } | null>(null);
+  const [iAmAdmin, setIAmAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(false);
 
-  const load = useCallback(async () => {
-    // Without try/finally we stay stuck on the skeleton forever the moment
-    // any query throws (transient network blip, Supabase 5xx, etc.) —
-    // setLoading(false) never fires and the cards just pulse indefinitely.
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [{ data: pollsData }, { data: optionsData }, { data: rsvpsData }] = await Promise.all([
-        supabase.from("polls").select("*").order("weekend_start_date", { ascending: false }),
-        supabase.from("poll_options").select("*"),
-        supabase.from("rsvps").select("*"),
+      const startYear = baseDate.getFullYear();
+      const endMonth = new Date(baseDate);
+      endMonth.setMonth(endMonth.getMonth() + 5);
+      const endYear = endMonth.getFullYear();
+
+      const requiredYears = Array.from(new Set([startYear, endYear]));
+      const requiredIsos = requiredYears.map(y => `${y}-01-01`);
+
+      const { data: pollsData } = await supabase
+        .from("polls")
+        .select("*")
+        .in("weekend_start_date", requiredIsos);
+
+      const foundYears = (pollsData || []).map(p => new Date(p.weekend_start_date).getFullYear());
+      const missing = requiredYears.filter(y => !foundYears.includes(y));
+      setMissingYears(missing);
+
+      if (!pollsData || pollsData.length === 0) {
+        setPollsAggregated(null);
+        setLoading(false);
+        return;
+      }
+
+      const pollIds = pollsData.map(p => p.id);
+
+      const [{ data: optionsData }, { data: rsvpsData }, { data: usersData }] = await Promise.all([
+        supabase.from("poll_options").select("*").in("poll_id", pollIds).order("game_date"),
+        supabase.from("rsvps").select("*").in("poll_id", pollIds),
+        supabase.from("users").select("user_id, player_name, avatar_url"),
       ]);
 
-      const optionsByPoll: Record<string, PollOption[]> = {};
-      (optionsData ?? []).forEach((o: PollOption) => {
-        (optionsByPoll[o.poll_id] ||= []).push(o);
+      setPollsAggregated({
+        ...(pollsData[0] as Poll),
+        id: "aggregated",
+        options: (optionsData as PollOption[]) ?? [],
+        rsvps: (rsvpsData as Rsvp[]) ?? [],
       });
 
-      const rsvpsByPoll: Record<string, Rsvp[]> = {};
-      (rsvpsData ?? []).forEach((r: Rsvp) => {
-        (rsvpsByPoll[r.poll_id] ||= []).push(r);
+      const map: UserMap = {};
+      (usersData ?? []).forEach((u: any) => {
+        map[u.user_id] = { player_name: u.player_name, avatar_url: u.avatar_url };
       });
-
-      const merged: PollWithCounts[] = (pollsData ?? []).map((p: Poll) => ({
-        ...p,
-        options: optionsByPoll[p.id] ?? [],
-        rsvps: rsvpsByPoll[p.id] ?? [],
-      }));
-      setPolls(merged);
+      setUsers(map);
     } catch (err) {
       console.error("[polls] load failed:", err);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, baseDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,21 +104,15 @@ export default function PollsListPage() {
         }
       }
 
-      await load();
+      await loadData();
     };
     init();
 
-    // Mobile cold-start fix: on first navigation from another route the
-    // browser sometimes runs the initial poll query before the Supabase
-    // session cookie has finished rehydrating, so RLS returns zero rows and
-    // the page reads as empty until the user pulls-to-refresh. Re-running
-    // load() on the next auth state change picks up the now-authenticated
-    // session and shows the existing poll without needing a manual refresh.
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (cancelled) return;
         setMe(session?.user ? { id: session.user.id } : null);
-        load();
+        loadData();
       },
     );
 
@@ -99,7 +120,99 @@ export default function PollsListPage() {
       cancelled = true;
       authListener?.subscription.unsubscribe();
     };
-  }, [supabase, load]);
+  }, [supabase, loadData]);
+
+  const handleInitialize = async (yearToInit: number) => {
+    setInitializing(true);
+    try {
+      const res = await fetch("/api/polls/initialize-calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: yearToInit }),
+      });
+      if (!res.ok) throw new Error("Failed to initialize");
+      toast.success(`Calendar for ${yearToInit} initialized!`);
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error initializing calendar");
+    } finally {
+      setInitializing(false);
+    }
+  };
+
+  const handleVote = async (optionId: string, response: RsvpResponse) => {
+    if (!me || !pollsAggregated) {
+      toast.error("You must be logged in to vote.");
+      return;
+    }
+    const option = pollsAggregated.options.find(o => o.id === optionId);
+    if (!option) return;
+    const targetPollId = option.poll_id;
+    
+    // Optimistic update
+    const previousRsvps = [...pollsAggregated.rsvps];
+    const existingIndex = previousRsvps.findIndex((r) => r.user_id === me.id && r.poll_option_id === optionId);
+    let newRsvps = [...previousRsvps];
+    
+    if (existingIndex >= 0 && newRsvps[existingIndex].response === response) {
+      // Toggle off
+      newRsvps.splice(existingIndex, 1);
+    } else if (existingIndex >= 0) {
+      // Change vote
+      newRsvps[existingIndex] = { ...newRsvps[existingIndex], response };
+    } else {
+      // New vote
+      newRsvps.push({
+        id: `temp-${Date.now()}`,
+        poll_id: targetPollId,
+        poll_option_id: optionId,
+        user_id: me.id,
+        response,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+    setPollsAggregated({ ...pollsAggregated, rsvps: newRsvps });
+
+    try {
+      if (existingIndex >= 0 && previousRsvps[existingIndex].response === response) {
+        const { error } = await supabase.from("rsvps").delete().eq("id", previousRsvps[existingIndex].id);
+        if (error) throw error;
+      } else if (existingIndex >= 0) {
+        const { error } = await supabase.from("rsvps").update({ response }).eq("id", previousRsvps[existingIndex].id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("rsvps").insert({
+          poll_id: targetPollId,
+          poll_option_id: optionId,
+          user_id: me.id,
+          response,
+        });
+        if (error) throw error;
+      }
+      
+      // Re-fetch RSVPs
+      const startYear = baseDate.getFullYear();
+      const endMonth = new Date(baseDate);
+      endMonth.setMonth(endMonth.getMonth() + 5);
+      const requiredYears = Array.from(new Set([startYear, endMonth.getFullYear()]));
+      const requiredIsos = requiredYears.map(y => `${y}-01-01`);
+      
+      const { data: pollsData } = await supabase.from("polls").select("id").in("weekend_start_date", requiredIsos);
+      if (pollsData) {
+         const pIds = pollsData.map(p => p.id);
+         const { data: latestRsvps } = await supabase.from("rsvps").select("*").in("poll_id", pIds);
+         if (latestRsvps) {
+           setPollsAggregated((p) => p ? { ...p, rsvps: latestRsvps as Rsvp[] } : p);
+         }
+      }
+    } catch (err) {
+      toast.error("Failed to save vote");
+      setPollsAggregated({ ...pollsAggregated, rsvps: previousRsvps }); // Revert
+    }
+  };
+
+  const tallies = useMemo(() => pollsAggregated ? tallyPoll(pollsAggregated) : new Map<string, OptionTally>(), [pollsAggregated]);
 
   return (
     <motion.main
@@ -115,136 +228,297 @@ export default function PollsListPage() {
         <span>Back to Games</span>
       </Link>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-[#39FF14]/10 rounded-xl border border-[#39FF14]/20">
-            <Calendar className="text-[#39FF14]" size={22} />
+            <CalendarIcon className="text-[#39FF14]" size={22} />
           </div>
           <div>
             <h1 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-none">
-              Game Polls
+              Rolling Poll
             </h1>
             <p className="text-white/50 text-base mt-2">
-              RSVP for upcoming weekends
+              Plan and vote on upcoming games
             </p>
           </div>
         </div>
-
-        {iAmAdmin ? (
-          <Link
-            href="/games/poll/new"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#39FF14]/20 hover:bg-[#39FF14]/30 border border-[#39FF14]/50 text-[#39FF14] font-black uppercase text-sm tracking-widest transition-colors"
-          >
-            <Plus size={16} />
-            New Poll
-          </Link>
-        ) : (
-          <div
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/40 font-black uppercase text-sm tracking-widest cursor-not-allowed"
-            title="Admin access required"
-          >
-            <Lock size={16} />
-            New Poll
-          </div>
-        )}
       </div>
 
+      {missingYears.length > 0 && iAmAdmin && (
+        <div className="mb-8 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-5 shadow-[0_0_20px_rgba(234,179,8,0.1)] flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h3 className="text-yellow-400 font-bold tracking-widest uppercase mb-1 flex items-center gap-2">
+              <ShieldAlert size={18} />
+              Action Required
+            </h3>
+            <p className="text-yellow-400/70 text-sm font-semibold">
+              The calendar for {missingYears.join(" and ")} has not been initialized yet.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {missingYears.map(y => (
+              <button
+                key={y}
+                onClick={() => handleInitialize(y)}
+                disabled={initializing}
+                className="px-4 py-2 rounded-xl bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/50 text-yellow-400 font-black uppercase text-xs tracking-widest transition-colors disabled:opacity-50"
+              >
+                {initializing ? "Wait..." : `Init ${y}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-white/5 border border-white/10 rounded-2xl h-28 animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white/5 border border-white/10 rounded-2xl h-64" />
           ))}
         </div>
-      ) : polls.length === 0 ? (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
-          <Calendar className="text-white/20 mx-auto mb-3" size={32} />
-          <p className="text-white/50 text-base mb-2">No polls yet</p>
-          {iAmAdmin && (
-            <p className="text-white/30 text-sm">Click &ldquo;New Poll&rdquo; to start one for an upcoming weekend.</p>
-          )}
+      ) : !pollsAggregated ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center max-w-2xl mx-auto mt-12">
+          <CalendarIcon className="text-white/20 mx-auto mb-4" size={48} />
+          <h2 className="text-2xl font-black uppercase mb-2">No Calendar Data</h2>
+          <p className="text-white/50 text-base mb-6">
+            There are no initialized polls for this 6-month window.
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {polls.map((poll) => (
-            <PollCard key={poll.id} poll={poll} myUserId={me?.id} />
-          ))}
-        </div>
+        <>
+          <TopSummaryBanner poll={pollsAggregated} tallies={tallies} users={users} />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, idx) => {
+              const mDate = new Date(baseDate);
+              mDate.setMonth(mDate.getMonth() + idx);
+              return (
+                <MonthGrid
+                  key={mDate.toISOString()}
+                  year={mDate.getFullYear()}
+                  month={mDate.getMonth()}
+                  poll={pollsAggregated}
+                  tallies={tallies}
+                  users={users}
+                  myUserId={me?.id}
+                  onToggleVote={(optId) => handleVote(optId, "yes")}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
     </motion.main>
   );
 }
 
-function PollCard({ poll, myUserId }: { poll: PollWithCounts; myUserId?: string }) {
-  const tallies = tallyPoll(poll);
-  const totalYes = poll.options.reduce((sum, o) => sum + (tallies.get(o.id)?.yes ?? 0), 0);
-  const uniqueVoters = new Set(poll.rsvps.map((r) => r.user_id)).size;
-  const haveIVoted = myUserId ? poll.rsvps.some((r) => r.user_id === myUserId) : false;
-  const confirmedOption = poll.confirmed_option_id
-    ? poll.options.find((o) => o.id === poll.confirmed_option_id)
-    : null;
-
-  const statusBadge = (() => {
-    switch (poll.status) {
-      case "open":
-        return { label: "Open", color: "text-cyan-400", bg: "bg-cyan-400/10 border-cyan-400/30" };
-      case "confirmed":
-        return { label: "Confirmed", color: "text-[#39FF14]", bg: "bg-[#39FF14]/10 border-[#39FF14]/30" };
-      case "cancelled":
-        return { label: "Cancelled", color: "text-red-400", bg: "bg-red-400/10 border-red-400/30" };
-      case "superseded":
-        return { label: "Re-polled", color: "text-white/40", bg: "bg-white/5 border-white/10" };
+// --- Top Summary Banner ---
+function TopSummaryBanner({ poll, tallies, users }: { poll: PollWithDetails, tallies: Map<string, OptionTally>, users: UserMap }) {
+  const leaderInfo = useMemo(() => {
+    // We want the most votes out of the upcoming last weekend and first weekend of the month.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bounds = nextMonthlyBoundaryPair(today);
+    
+    // Collect all options that belong to these two boundary weekends
+    const boundaryIsos = new Set<string>();
+    
+    // Last weekend dates
+    const lwFriday = new Date(bounds.lastFriday);
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(lwFriday);
+      d.setDate(d.getDate() + i);
+      boundaryIsos.add(toIsoDate(d));
     }
-  })();
+    // Also include Monday if it's a bank holiday (will be caught if it exists as an option)
+    const lwMon = new Date(lwFriday); lwMon.setDate(lwMon.getDate() + 3);
+    boundaryIsos.add(toIsoDate(lwMon));
+
+    // First weekend dates
+    const fwFriday = new Date(bounds.firstFridayNext);
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(fwFriday);
+      d.setDate(d.getDate() + i);
+      boundaryIsos.add(toIsoDate(d));
+    }
+    const fwMon = new Date(fwFriday); fwMon.setDate(fwMon.getDate() + 3);
+    boundaryIsos.add(toIsoDate(fwMon));
+
+    // Filter viable options
+    const viableOptions = poll.options.filter(o => 
+      boundaryIsos.has(o.game_date) && o.game_date >= toIsoDate(today)
+    );
+
+    if (viableOptions.length === 0) return null;
+
+    // Find the one with most votes
+    const leader = [...viableOptions].sort((a, b) => {
+      const ta = tallies.get(a.id);
+      const tb = tallies.get(b.id);
+      const yesA = ta?.yes ?? 0;
+      const yesB = tb?.yes ?? 0;
+      if (yesB !== yesA) return yesB - yesA;
+      return a.game_date.localeCompare(b.game_date);
+    })[0];
+
+    const tally = tallies.get(leader.id);
+    if (!tally || tally.yes === 0) return null; // No votes at all yet
+
+    return { leader, tally };
+  }, [poll, tallies]);
+
+  if (!leaderInfo) return null;
 
   return (
-    <Link
-      href={`/games/poll/${poll.id}`}
-      className="block bg-white/5 backdrop-blur-xl border border-white/10 hover:border-[#39FF14]/30 rounded-2xl p-4 md:p-5 transition-colors group"
-    >
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            <span className={`text-[10px] font-black tracking-widest uppercase border rounded px-1.5 py-0.5 ${statusBadge.color} ${statusBadge.bg}`}>
-              {statusBadge.label}
+    <div className="mb-8 bg-gradient-to-r from-[#39FF14]/10 to-transparent border border-[#39FF14]/30 rounded-2xl p-5 md:p-6 shadow-[0_0_30px_rgba(57,255,20,0.05)]">
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Trophy className="text-[#39FF14]" size={18} />
+            <span className="text-xs font-black tracking-widest uppercase text-[#39FF14]">
+              Upcoming Weekend Leader
             </span>
-            {confirmedOption && (
-              <span className="text-[10px] font-black tracking-widest uppercase text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded px-1.5 py-0.5 inline-flex items-center gap-1">
-                <Crown size={10} />
-                {formatDateShort(confirmedOption.game_date)}
-              </span>
-            )}
-            {poll.status === "open" && myUserId && !haveIVoted && (
-              <span className="text-[10px] font-black tracking-widest uppercase text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded px-1.5 py-0.5 inline-flex items-center gap-1">
-                <AlertTriangle size={10} />
-                Vote needed
-              </span>
-            )}
           </div>
-          <p className="text-lg md:text-xl font-black uppercase tracking-tight group-hover:text-[#39FF14] transition-colors">
-            Weekend of {formatDateLong(poll.weekend_start_date)}
+          <p className="text-2xl font-black uppercase tracking-tight text-white mb-1">
+            {formatDateLong(leaderInfo.leader.game_date)}
           </p>
-          <p className="text-sm text-white/50 mt-1">
-            {poll.options.length} {poll.options.length === 1 ? "option" : "options"} ·{" "}
-            {totalYes} yes vote{totalYes === 1 ? "" : "s"} · {uniqueVoters} voter{uniqueVoters === 1 ? "" : "s"}
+          <p className="text-sm font-semibold text-white/60">
+            {leaderInfo.leader.label} · {leaderInfo.tally.yes} ({leaderInfo.tally.voters.yes.map(uid => users[uid]?.player_name || "Unknown").join(", ")})
           </p>
         </div>
-        <div className="flex items-center gap-2 text-white/40">
-          <Users size={14} />
-          <span className="text-sm tabular-nums">{uniqueVoters}</span>
+        
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/games/poll?date=${leaderInfo.leader.game_date}`}
+            className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-[#39FF14] text-black font-black uppercase text-sm tracking-widest hover:shadow-[0_0_20px_rgba(57,255,20,0.5)] transition-shadow"
+          >
+            RSVP
+          </Link>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
+// --- Month Grid ---
+function MonthGrid({ year, month, poll, tallies, users, myUserId, onToggleVote }: { year: number, month: number, poll: PollWithDetails, tallies: Map<string, OptionTally>, users: UserMap, myUserId?: string, onToggleVote: (optionId: string) => void }) {
+  const monthName = new Date(year, month, 1).toLocaleDateString("en-GB", { month: "long" });
+  
+  // Build calendar days
+  const days = useMemo(() => {
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    
+    // Pad start (0=Sun, 1=Mon)
+    let startOffset = start.getDay() - 1;
+    if (startOffset === -1) startOffset = 6; // Sunday is 6th index in Mon-first week
+    
+    const paddedDays: (Date | null)[] = Array(startOffset).fill(null);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      paddedDays.push(new Date(d));
+    }
+    return paddedDays;
+  }, [year, month]);
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+      <h3 className="text-lg font-black uppercase tracking-widest text-[#39FF14] mb-4 text-center">{monthName}</h3>
+      <div className="grid grid-cols-7 gap-1 text-center mb-2">
+        {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+          <div key={i} className="text-[10px] font-bold text-white/30 uppercase">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((date, i) => {
+          if (!date) return <div key={`empty-${i}`} className="aspect-square" />;
+          
+          const iso = toIsoDate(date);
+          const option = poll.options.find(o => o.game_date === iso);
+          const tally = option ? tallies.get(option.id) : null;
+          const myVote = (myUserId && option) ? poll.rsvps.find(r => r.poll_option_id === option.id && r.user_id === myUserId)?.response : null;
+          
+          let btnClass = "aspect-square rounded-lg flex flex-col items-center justify-center relative transition-all border text-sm font-semibold ";
+          
+          if (option) {
+            // Playable day
+            if (myVote === "yes") {
+              if (option.is_bank_holiday) {
+                btnClass += "border-yellow-400 bg-yellow-400 text-black hover:bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] cursor-pointer";
+              } else {
+                btnClass += "border-[#39FF14] bg-[#39FF14] text-black hover:bg-[#32e612] shadow-[0_0_15px_rgba(57,255,20,0.4)] cursor-pointer";
+              }
+            } else {
+              if (option.is_bank_holiday) {
+                btnClass += "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:border-yellow-400 hover:shadow-[0_0_10px_rgba(234,179,8,0.3)] cursor-pointer";
+              } else {
+                btnClass += "border-[#39FF14]/30 bg-[#39FF14]/5 text-[#39FF14] hover:border-[#39FF14] hover:shadow-[0_0_10px_rgba(57,255,20,0.3)] cursor-pointer";
+              }
+            }
+          } else {
+            // Regular unplayable day
+            btnClass += "border-transparent text-white/30 cursor-default";
+          }
+
+          const isPast = date < new Date(new Date().setHours(0,0,0,0));
+          if (isPast && option) {
+            if (myVote === "yes") {
+              btnClass = btnClass.replace("border-[#39FF14]", "border-white/20").replace("bg-[#39FF14]", "bg-white/20").replace("text-black", "text-white").replace("shadow-[0_0_15px_rgba(57,255,20,0.4)]", "");
+              btnClass = btnClass.replace("border-yellow-400", "border-white/20").replace("bg-yellow-400", "bg-white/20").replace("text-black", "text-white").replace("shadow-[0_0_15px_rgba(234,179,8,0.4)]", "");
+            } else {
+              btnClass = btnClass.replace("border-[#39FF14]/30", "border-white/10").replace("bg-[#39FF14]/5", "bg-black/20").replace("text-[#39FF14]", "text-white/40");
+              btnClass = btnClass.replace("border-yellow-500/40", "border-white/10").replace("bg-yellow-500/10", "bg-black/20").replace("text-yellow-400", "text-white/40");
+            }
+          }
+
+          const yesVoters = tally?.voters.yes.map(uid => users[uid]?.player_name || "Unknown").join(", ") || "";
+          let tooltip = "";
+          if (option) {
+            tooltip = `${option.label}`;
+            if (yesVoters) tooltip += `\nYes: ${yesVoters}`;
+            else tooltip += `\nNo votes yet`;
+          }
+
+          return (
+            <button
+              key={iso}
+              className={btnClass}
+              onClick={() => option && onToggleVote(option.id)}
+              disabled={!option}
+              title={tooltip}
+            >
+              <span>{date.getDate()}</span>
+              {tally && tally.yes > 0 && myVote !== "yes" && (
+                <div className="absolute bottom-1 w-full flex justify-center gap-0.5">
+                  <span className={`text-[10px] leading-none font-bold ${option?.is_bank_holiday ? 'text-yellow-400' : 'text-[#39FF14]'}`}>
+                    {tally.yes}
+                  </span>
+                </div>
+              )}
+              {tally && tally.yes > 0 && myVote === "yes" && (
+                <div className="absolute bottom-1 w-full flex justify-center gap-0.5">
+                  <span className="text-[10px] leading-none font-bold text-black/60">
+                    {tally.yes}
+                  </span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// --- Utils ---
 function formatDateLong(iso: string): string {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", {
-    day: "numeric", month: "long", year: "numeric",
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
 }
 
-function formatDateShort(iso: string): string {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short",
-  });
+function toIsoDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }

@@ -11,83 +11,81 @@ import {
   tallyPoll,
 } from "@/lib/polls";
 
-// One-time post-login modal: if the user lands on the app right after a
-// fresh login AND there's an open poll they haven't responded to, show a
-// modal nudging them to RSVP. The dashboard banner still does the same job
-// passively, but this guarantees they at least see it once.
-//
-// Trigger: a "fresh login" flag set in sessionStorage by the login page.
-// The flag is consumed (deleted) immediately so the modal only ever fires
-// once per login.
-
 const FRESH_LOGIN_KEY = "pt:freshLogin";
-const SNOOZE_KEY = "pt:pollPromptSnoozedFor"; // poll id we last dismissed
+const SNOOZE_KEY = "pt:pollPromptSnoozedFor"; 
 
-/** Called from the login page on successful auth. */
 export function markFreshLogin() {
   if (typeof window === "undefined") return;
   try {
     sessionStorage.setItem(FRESH_LOGIN_KEY, "1");
   } catch {
-    // ignore quota / private mode failures
   }
 }
 
 export default function PollLoginPrompt() {
   const supabase = createSupabaseBrowserClient();
   const [poll, setPoll] = useState<PollWithDetails | null>(null);
+  const [promptOptions, setPromptOptions] = useState<PollOption[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [voted, setVoted] = useState<Record<string, RsvpResponse>>({});
 
   const findRelevantPoll = useCallback(async (userId: string) => {
-    // Only consider open polls for upcoming (or very recent) weekends.
-    const weekFloor = new Date();
-    weekFloor.setDate(weekFloor.getDate() - 7);
-    const floorIso = toIsoDate(weekFloor);
+    const year = new Date().getFullYear();
+    const weekendStartIso = `${year}-01-01`;
 
-    const { data: openPolls } = await supabase
+    const { data: pollData } = await supabase
       .from("polls")
       .select("*")
-      .eq("status", "open")
-      .gte("weekend_start_date", floorIso)
-      .order("weekend_start_date", { ascending: true });
+      .eq("weekend_start_date", weekendStartIso)
+      .limit(1)
+      .maybeSingle();
 
-    if (!openPolls?.length) return null;
+    if (!pollData) return null;
 
-    // Find the soonest poll where the user hasn't responded at all.
-    for (const p of openPolls as Poll[]) {
-      const { data: existingVotes } = await supabase
-        .from("rsvps")
-        .select("id")
-        .eq("poll_id", p.id)
-        .eq("user_id", userId)
-        .limit(1);
-      if (existingVotes && existingVotes.length > 0) continue;
-
-      // Skip if the user already snoozed this exact poll.
-      if (typeof window !== "undefined" && sessionStorage.getItem(SNOOZE_KEY) === p.id) {
-        continue;
-      }
-
-      const [{ data: opts }, { data: rsvps }] = await Promise.all([
-        supabase.from("poll_options").select("*").eq("poll_id", p.id).order("game_date"),
-        supabase.from("rsvps").select("*").eq("poll_id", p.id),
-      ]);
-
-      return {
-        ...p,
-        options: (opts as PollOption[]) ?? [],
-        rsvps: (rsvps as Rsvp[]) ?? [],
-      };
+    if (typeof window !== "undefined" && sessionStorage.getItem(SNOOZE_KEY) === pollData.id) {
+      return null;
     }
+
+    const [{ data: opts }, { data: rsvps }] = await Promise.all([
+      supabase.from("poll_options").select("*").eq("poll_id", pollData.id).order("game_date"),
+      supabase.from("rsvps").select("*").eq("poll_id", pollData.id),
+    ]);
+
+    const pollWithDetails = {
+      ...(pollData as Poll),
+      options: (opts as PollOption[]) ?? [],
+      rsvps: (rsvps as Rsvp[]) ?? [],
+    };
+
+    // Find upcoming options (next 7 days) where the user hasn't voted
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inAWeek = new Date(today);
+    inAWeek.setDate(inAWeek.getDate() + 7);
+    
+    const todayIso = toIsoDate(today);
+    const inAWeekIso = toIsoDate(inAWeek);
+
+    const upcomingOptions = pollWithDetails.options.filter(
+      (o) => o.game_date >= todayIso && o.game_date <= inAWeekIso
+    );
+
+    const unvotedOptions = upcomingOptions.filter(o => 
+      !pollWithDetails.rsvps.some(r => r.user_id === userId && r.poll_option_id === o.id)
+    );
+
+    if (unvotedOptions.length > 0) {
+      setPromptOptions(unvotedOptions);
+      return pollWithDetails;
+    }
+
     return null;
   }, [supabase]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Bail unless this navigation was triggered by a fresh login.
     const fresh = sessionStorage.getItem(FRESH_LOGIN_KEY);
     if (!fresh) return;
     sessionStorage.removeItem(FRESH_LOGIN_KEY);
@@ -109,7 +107,7 @@ export default function PollLoginPrompt() {
 
   const dismiss = () => {
     if (poll && typeof window !== "undefined") {
-      try { sessionStorage.setItem(SNOOZE_KEY, poll.id); } catch { /* ignore */ }
+      try { sessionStorage.setItem(SNOOZE_KEY, poll.id); } catch { }
     }
     setOpen(false);
   };
@@ -117,8 +115,6 @@ export default function PollLoginPrompt() {
   const setVote = async (optionId: string, response: RsvpResponse) => {
     if (!poll || busy) return;
     setBusy(true);
-    // Snapshot the prior vote so we can revert the optimistic UI update
-    // if the network call fails.
     const previous = voted[optionId];
     try {
       const { data } = await supabase.auth.getUser();
@@ -127,7 +123,6 @@ export default function PollLoginPrompt() {
         return;
       }
 
-      // Toggle off if clicking the same response again.
       const current = voted[optionId];
       if (current === response) {
         const { error } = await supabase
@@ -143,9 +138,6 @@ export default function PollLoginPrompt() {
           return next;
         });
       } else {
-        // Upsert: try update, fall back to insert. Simpler than a real
-        // upsert because rsvps has a UNIQUE(poll_option_id, user_id) — we
-        // just delete-then-insert.
         const { error: deleteError } = await supabase
           .from("rsvps")
           .delete()
@@ -163,8 +155,6 @@ export default function PollLoginPrompt() {
         setVoted((v) => ({ ...v, [optionId]: response }));
       }
     } catch (err) {
-      // Revert the optimistic state so the UI doesn't lie about a vote
-      // that didn't actually persist.
       setVoted((v) => {
         const next = { ...v };
         if (previous === undefined) delete next[optionId];
@@ -210,20 +200,20 @@ export default function PollLoginPrompt() {
               </div>
               <div className="min-w-0">
                 <p className="text-[10px] font-black tracking-widest uppercase text-[#39FF14]">
-                  Quick RSVP
+                  Upcoming Games
                 </p>
                 <h2 className="text-xl font-black tracking-tight uppercase truncate">
-                  Weekend of {formatDateLong(poll.weekend_start_date)}
+                  Quick RSVP
                 </h2>
               </div>
             </div>
 
             <p className="text-sm text-white/60 mb-5">
-              You haven&apos;t voted yet — pick a response per day. You can change it later.
+              You haven&apos;t voted for these upcoming dates. Let the group know if you can play.
             </p>
 
             <div className="space-y-3">
-              {poll.options.map((opt) => {
+              {promptOptions.map((opt) => {
                 const tally = tallyPoll(poll).get(opt.id);
                 const myVote = voted[opt.id];
                 return (
@@ -234,25 +224,19 @@ export default function PollLoginPrompt() {
                           {opt.label}
                         </p>
                         <p className="text-xs text-white/40">
-                          {formatDateLong(opt.game_date)} · {opt.start_time.slice(0, 5)}
+                          {formatDateLong(opt.game_date)}
                         </p>
                       </div>
                       {tally && (
                         <p className="text-[10px] font-bold tracking-widest uppercase text-white/40 shrink-0">
-                          {tally.yes}Y · {tally.maybe}M · {tally.no}N
+                          {tally.yes} Yes
                         </p>
                       )}
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <QuickVote label="Yes" icon={<Check size={13} />} active={myVote === "yes"}
-                        color="text-[#39FF14] border-[#39FF14]/40" activeBg="bg-[#39FF14]/20"
+                    <div className="mt-2">
+                      <QuickVote label={myVote === "yes" ? "Cancel RSVP" : "RSVP Yes"} icon={myVote === "yes" ? <X size={13} /> : <Check size={13} />} active={myVote === "yes"}
+                        color={myVote === "yes" ? "text-red-400 border-red-400/40" : "text-[#39FF14] border-[#39FF14]/40"} activeBg={myVote === "yes" ? "bg-red-400/20" : "bg-[#39FF14]/20"}
                         onClick={() => setVote(opt.id, "yes")} disabled={busy} />
-                      <QuickVote label="Maybe" icon={<HelpCircle size={13} />} active={myVote === "maybe"}
-                        color="text-yellow-400 border-yellow-400/40" activeBg="bg-yellow-400/20"
-                        onClick={() => setVote(opt.id, "maybe")} disabled={busy} />
-                      <QuickVote label="No" icon={<X size={13} />} active={myVote === "no"}
-                        color="text-red-400 border-red-400/40" activeBg="bg-red-400/20"
-                        onClick={() => setVote(opt.id, "no")} disabled={busy} />
                     </div>
                   </div>
                 );
@@ -264,14 +248,14 @@ export default function PollLoginPrompt() {
                 onClick={dismiss}
                 className="flex-1 px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white font-bold uppercase text-xs tracking-widest transition-colors"
               >
-                Maybe later
+                Done
               </button>
               <Link
-                href={`/games/poll/${poll.id}`}
+                href={`/games/poll`}
                 onClick={() => setOpen(false)}
                 className="flex-1 inline-flex items-center justify-center gap-1 px-4 py-2.5 rounded-lg bg-[#39FF14]/20 hover:bg-[#39FF14]/30 border border-[#39FF14]/50 text-[#39FF14] font-black uppercase text-xs tracking-widest transition-colors"
               >
-                Open Poll
+                Open Calendar
                 <ArrowRight size={12} />
               </Link>
             </div>
@@ -297,7 +281,7 @@ function QuickVote({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-1 px-2 py-2 rounded-md border font-bold uppercase text-[10px] tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-9 ${color} ${
+      className={`w-full inline-flex items-center justify-center gap-1 px-2 py-2 rounded-md border font-bold uppercase text-[10px] tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-9 ${color} ${
         active ? activeBg : "bg-black/30 hover:bg-white/5"
       }`}
     >

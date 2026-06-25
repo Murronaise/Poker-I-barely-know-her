@@ -27,6 +27,17 @@ export type ChangelogEntry = {
 // Most recent first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "1.7.7",
+    date: "June 25, 2026",
+    summary: "Rolling 6-month calendar and simpler RSVPs",
+    items: [
+      { category: "Scheduling", type: "feature", text: "The yearly calendar is now a rolling 6-month 'Rolling Poll'. It automatically shows exactly six months ahead, cleanly spanning year boundaries." },
+      { category: "Scheduling", type: "improvement", text: "Voting is now a binary 'Yes' toggle. 'Maybe' and 'No' options have been removed for simplicity." },
+      { category: "Scheduling", type: "improvement", text: "The upcoming games banner now lists the actual names of the players who have RSVP'd yes." },
+      { category: "Scheduling", type: "improvement", text: "Admins are now proactively prompted to initialize new years when the rolling window starts looking into uninitialized territory.", adminOnly: true },
+    ],
+  },
+  {
     version: "1.7.6",
     date: "June 1, 2026",
     summary: "Pages no longer flash old numbers before settling on the right ones",

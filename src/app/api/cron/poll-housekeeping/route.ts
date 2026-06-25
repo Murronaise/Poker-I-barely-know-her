@@ -94,6 +94,9 @@ async function runHousekeeping() {
     // they're not "rejected by quorum", they're just unfinished.
     if (poll.options.length === 0) continue;
 
+    // Skip the yearly calendar poll — it should never be confirmed or cancelled by cron.
+    if (poll.notes && poll.notes.includes("Yearly Calendar")) continue;
+
     const threshold = poll.min_players ?? DEFAULT_MIN_PLAYERS;
 
     // Only consider options whose game_date hasn't already passed.
