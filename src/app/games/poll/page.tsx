@@ -62,7 +62,7 @@ export default function PollsCalendarPage() {
       const [{ data: optionsData }, { data: rsvpsData }, { data: usersData }] = await Promise.all([
         supabase.from("poll_options").select("*").in("poll_id", pollIds).order("game_date"),
         supabase.from("rsvps").select("*").in("poll_id", pollIds),
-        supabase.from("users").select("user_id, player_name, avatar_url"),
+        supabase.from("users").select("user_id, player_name"),
       ]);
 
       setPollsAggregated({
@@ -73,8 +73,8 @@ export default function PollsCalendarPage() {
       });
 
       const map: UserMap = {};
-      (usersData ?? []).forEach((u: { user_id: string; player_name: string; avatar_url: string | null }) => {
-        map[u.user_id] = { player_name: u.player_name, avatar_url: u.avatar_url };
+      (usersData ?? []).forEach((u: { user_id: string; player_name: string }) => {
+        map[u.user_id] = { player_name: u.player_name, avatar_url: null };
       });
       setUsers(map);
     } catch (err) {
