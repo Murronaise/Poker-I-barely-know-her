@@ -73,7 +73,7 @@ export default function PollsCalendarPage() {
       });
 
       const map: UserMap = {};
-      (usersData ?? []).forEach((u: any) => {
+      (usersData ?? []).forEach((u: { user_id: string; player_name: string; avatar_url: string | null }) => {
         map[u.user_id] = { player_name: u.player_name, avatar_url: u.avatar_url };
       });
       setUsers(map);
@@ -152,7 +152,7 @@ export default function PollsCalendarPage() {
     // Optimistic update
     const previousRsvps = [...pollsAggregated.rsvps];
     const existingIndex = previousRsvps.findIndex((r) => r.user_id === me.id && r.poll_option_id === optionId);
-    let newRsvps = [...previousRsvps];
+    const newRsvps = [...previousRsvps];
     
     if (existingIndex >= 0 && newRsvps[existingIndex].response === response) {
       // Toggle off

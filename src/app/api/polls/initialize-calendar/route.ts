@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Fetch UK Bank holidays
-  let bankHolidays = new Map<string, string>();
+  const bankHolidays = new Map<string, string>();
   try {
     const res = await fetch("https://www.gov.uk/bank-holidays.json", {
       next: { revalidate: 60 * 60 * 24 },
